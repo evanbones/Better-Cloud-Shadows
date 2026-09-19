@@ -1,6 +1,6 @@
 #version 150
 
-#moj_import < fog.glsl >
+#moj_import <fog.glsl>
 
 uniform sampler2D DepthSampler;
 uniform sampler2D CoverageSampler;
