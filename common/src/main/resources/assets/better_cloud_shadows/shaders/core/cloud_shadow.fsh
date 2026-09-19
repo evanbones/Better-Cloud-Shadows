@@ -1,6 +1,6 @@
 #version 150
 
-#moj_import <fog.glsl>
+#moj_import < fog.glsl >
 
 uniform sampler2D DepthSampler;
 uniform sampler2D CoverageSampler;
@@ -8,7 +8,7 @@ uniform sampler2D CoverageSampler;
 uniform mat4 InvViewProjMat;
 uniform vec3 CameraPos;
 uniform vec3 SunDir;
-uniform vec2 CloudPlane;
+uniform float CloudHeight;
 uniform vec4 CoverageOrigin;
 uniform vec4 ShadowColor;
 uniform vec2 FadeParams;
@@ -23,8 +23,10 @@ out vec4 fragColor;
 
 float coverageAt(vec2 hit) {
     vec2 uv = (hit - CoverageOrigin.xy) * CoverageOrigin.z;
-    if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return 0.0;
-    return texture(CoverageSampler, uv).r;
+    vec2 toEdge = min(uv, 1.0 - uv);
+    float edgeFade = smoothstep(0.0, CoverageOrigin.w, min(toEdge.x, toEdge.y));
+    if (edgeFade <= 0.0) return 0.0;
+    return texture(CoverageSampler, clamp(uv, 0.0, 1.0)).r * edgeFade;
 }
 
 void main() {
@@ -36,19 +38,12 @@ void main() {
     vec3 relative = unprojected.xyz / unprojected.w;
     vec3 world = relative + CameraPos;
 
-    float toCloud = CloudPlane.x - world.y;
+    float toCloud = CloudHeight - world.y;
     if (toCloud <= 0.0) discard;
 
     vec2 hit = world.xz + SunDir.xz * (toCloud / SunDir.y);
 
-    float tap = CloudPlane.y;
-    float coverage = 0.0;
-    for (int x = -1; x <= 1; x++) {
-        for (int y = -1; y <= 1; y++) {
-            coverage += coverageAt(hit + vec2(float(x), float(y)) * tap);
-        }
-    }
-    coverage /= 9.0;
+    float coverage = coverageAt(hit);
     if (coverage <= 0.0) discard;
 
     float fade = 1.0 - smoothstep(FadeParams.x, FadeParams.y, length(relative.xz));

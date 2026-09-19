@@ -1,28 +1,35 @@
 package com.evandev.better_cloud_shadows.compat.betterclouds;
 
+import com.evandev.better_cloud_shadows.clouds.CloudField;
+import com.evandev.better_cloud_shadows.mixin.betterclouds.ChunkedGeneratorAccessor;
 import com.qendolin.betterclouds.BetterClouds;
 import com.qendolin.betterclouds.clouds.*;
 import com.qendolin.betterclouds.config.Config;
 import com.qendolin.betterclouds.config.ConfigManager;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.renderer.DimensionSpecialEffects;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.dimension.DimensionType;
 
-import java.lang.reflect.Field;
-
 final class BetterCloudsBridge {
-
-    private static Field samplerField;
-    private static Sampler sampler;
 
     private BetterCloudsBridge() {
     }
 
-    static CloudField field(ClientLevel level, float partialTick) {
-        if (!ConfigManager.isInitialized() || !BetterClouds.isEnabled()) return null;
+    static boolean ownsClouds(ClientLevel level) {
+        if (!ConfigManager.isInitialized() || !BetterClouds.isEnabled()) return false;
 
+        Renderer renderer = BetterClouds.getCloudsRenderer();
+        if (renderer == null) return false;
+
+        Resources resources = renderer.resources();
+        if (resources == null || resources.failedToLoadCritical()) return false;
+
+        ResourceKey<DimensionType> dimension = level.dimensionTypeRegistration().unwrapKey().orElse(null);
+        return ConfigManager.instance().enabledDimensions.contains(dimension);
+    }
+
+    static CloudField field(ClientLevel level, float partialTick) {
         Renderer renderer = BetterClouds.getCloudsRenderer();
         if (renderer == null) return null;
 
@@ -35,76 +42,51 @@ final class BetterCloudsBridge {
         Config config = generator.config();
         if (config == null || config.spacing <= 0) return null;
 
-        ResourceKey<DimensionType> dimension = level.dimensionTypeRegistration().unwrapKey().orElse(null);
-        if (!ConfigManager.instance().enabledDimensions.contains(dimension)) return null;
-
-        DimensionSpecialEffects effects = level.effects();
-        float cloudHeight = effects.getCloudHeight();
+        float cloudHeight = level.effects().getCloudHeight();
         if (Float.isNaN(cloudHeight)) return null;
 
+        // Better Clouds quantises cloudiness the same way before it regenerates geometry
         float cloudiness = (float) (Math.ceil(CloudinessProvider.getCloudiness(level, partialTick) * 100) / 100.0);
         if (cloudiness <= 0) return null;
 
-        sampler = samplerOf(generator);
-        if (sampler == null) return null;
+        Sampler noise = ((ChunkedGeneratorAccessor) generator).better_cloud_shadows$sampler();
+        if (noise == null) return null;
+
+        float spacing = config.spacing;
+        float sparsity = config.sparsity;
+        float fuzziness = config.fuzziness;
+        float samplingScale = config.samplingScale;
 
         return new CloudField(
-                generator.originX(),
-                generator.originZ(),
-                config.spacing,
-                config.sparsity,
-                config.fuzziness,
-                config.samplingScale,
+                generator.originX() - spacing * 0.5,
+                generator.originZ() - spacing * 0.5,
+                spacing,
                 config.sizeXZ,
-                config.bottomSparsity,
-                cloudiness,
                 cloudHeight + config.yOffset,
                 config.blockDistance(),
-                signatureOf(sampler, config, cloudiness)
+                signatureOf(noise, config, cloudiness),
+                (cellX, cellZ) -> coverage(noise, cellX, cellZ, spacing, sparsity, fuzziness, samplingScale, cloudiness)
         );
     }
 
-    static float coverage(int gridX, int gridZ, CloudField field) {
-        Sampler current = sampler;
-        if (current == null) return 0;
+    private static float coverage(
+            Sampler noise, int cellX, int cellZ,
+            float spacing, float sparsity, float fuzziness, float samplingScale, float cloudiness) {
+        if (sparsity > 0 && Sampler.hashToFloat(noise.getSeed(), 'G', cellX, cellZ) < sparsity) return 0;
 
-        if (field.sparsity() > 0
-                && Sampler.hashToFloat(current.getSeed(), 'G', gridX, gridZ) < field.sparsity()) {
-            return 0;
-        }
-
-        int sampleX = Mth.floor(gridX * field.spacing());
-        int sampleZ = Mth.floor(gridZ * field.spacing());
-        return current.sample(sampleX, sampleZ, field.cloudiness(), field.fuzziness(), field.samplingScale()) > 0 ? 1f : 0f;
+        int sampleX = Mth.floor(cellX * spacing);
+        int sampleZ = Mth.floor(cellZ * spacing);
+        return noise.sample(sampleX, sampleZ, cloudiness, fuzziness, samplingScale) > 0 ? 1f : 0f;
     }
 
-    private static Sampler samplerOf(ChunkedGenerator generator) {
-        try {
-            Field field = samplerField;
-            if (field == null) {
-                field = ChunkedGenerator.class.getDeclaredField("sampler");
-                field.setAccessible(true);
-                samplerField = field;
-            }
-            return (Sampler) field.get(generator);
-        } catch (ReflectiveOperationException e) {
-            return null;
-        }
-    }
-
-    private static long signatureOf(Sampler sampler, Config config, float cloudiness) {
-        long hash = sampler.getSeed();
-        hash = hash * 31 + System.identityHashCode(sampler);
+    private static long signatureOf(Sampler noise, Config config, float cloudiness) {
+        long hash = noise.getSeed();
+        hash = hash * 31 + System.identityHashCode(noise);
         hash = hash * 31 + Float.floatToIntBits(config.spacing);
         hash = hash * 31 + Float.floatToIntBits(config.sparsity);
         hash = hash * 31 + Float.floatToIntBits(config.fuzziness);
         hash = hash * 31 + Float.floatToIntBits(config.samplingScale);
-        hash = hash * 31 + Float.floatToIntBits(config.bottomSparsity);
         hash = hash * 31 + Float.floatToIntBits(cloudiness);
         return hash;
-    }
-
-    static void invalidate() {
-        sampler = null;
     }
 }

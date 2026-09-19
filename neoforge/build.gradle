@@ -46,6 +46,14 @@ dependencies {
     compileOnly "maven.modrinth:yacl:${yacl_version}-neoforge"
     runtimeOnly "maven.modrinth:yacl:${yacl_version}-neoforge"
 
+    compileOnly "com.moulberry:mixinconstraints:${mixin_constraints_version}"
+    jarJar(implementation("com.moulberry:mixinconstraints")) {
+        version {
+            strictly "[${mixin_constraints_version},)"
+            prefer "${mixin_constraints_version}"
+        }
+    }
+
     compileOnly annotationProcessor("com.github.bawnorton.mixinsquared:mixinsquared-common:${mixin_squared_version}")
     jarJar(implementation("com.github.bawnorton.mixinsquared:mixinsquared-neoforge")) {
         version {

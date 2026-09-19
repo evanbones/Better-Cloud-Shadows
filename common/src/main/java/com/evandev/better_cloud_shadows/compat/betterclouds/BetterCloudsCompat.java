@@ -1,5 +1,6 @@
 package com.evandev.better_cloud_shadows.compat.betterclouds;
 
+import com.evandev.better_cloud_shadows.clouds.CloudField;
 import com.evandev.better_cloud_shadows.platform.Services;
 import net.minecraft.client.multiplayer.ClientLevel;
 
@@ -19,6 +20,15 @@ public final class BetterCloudsCompat {
         return loaded;
     }
 
+    public static boolean ownsClouds(ClientLevel level) {
+        if (!isLoaded()) return false;
+        try {
+            return BetterCloudsBridge.ownsClouds(level);
+        } catch (LinkageError | RuntimeException e) {
+            return false;
+        }
+    }
+
     public static CloudField field(ClientLevel level, float partialTick) {
         if (!isLoaded()) return null;
         try {
@@ -26,14 +36,5 @@ public final class BetterCloudsCompat {
         } catch (LinkageError | RuntimeException e) {
             return null;
         }
-    }
-
-    public static float coverage(int gridX, int gridZ, CloudField field) {
-        return BetterCloudsBridge.coverage(gridX, gridZ, field);
-    }
-
-    public static void invalidate() {
-        if (!isLoaded()) return;
-        BetterCloudsBridge.invalidate();
     }
 }

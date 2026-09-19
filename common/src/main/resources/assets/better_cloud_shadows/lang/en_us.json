@@ -2,9 +2,12 @@
   "config.better_cloud_shadows.title": "Better Cloud Shadows",
   "config.better_cloud_shadows.category.general": "General",
   "config.better_cloud_shadows.option.cloudShadows": "Cloud Shadows",
-  "config.better_cloud_shadows.option.cloudShadows.tooltip": "Casts moving shadows on the ground beneath Better Clouds' clouds.",
+  "config.better_cloud_shadows.option.cloudShadows.tooltip": "Casts moving shadows on the ground beneath the clouds. Uses Better Clouds' clouds when installed, and vanilla clouds otherwise.",
   "config.better_cloud_shadows.option.cloudShadowStrength": "Cloud Shadow Strength",
   "config.better_cloud_shadows.option.cloudShadowStrength.tooltip": "How dark cloud shadows get. They're always lighter near sunrise/sunset and while it's raining.",
   "config.better_cloud_shadows.option.cloudShadowSoftness": "Cloud Shadow Softness",
-  "config.better_cloud_shadows.option.cloudShadowSoftness.tooltip": "How soft and blurry the edges of cloud shadows look."
+  "config.better_cloud_shadows.option.cloudShadowSoftness.tooltip": "How far the edges of cloud shadows blur out, in blocks.",
+  "config.better_cloud_shadows.option.cloudShadowDistance": "Cloud Shadow Distance",
+  "config.better_cloud_shadows.option.cloudShadowDistance.tooltip": "How far away cloud shadows are still drawn, in blocks. May be capped by your cloud render distance.",
+  "config.better_cloud_shadows.blocks": "%s blocks"
 }

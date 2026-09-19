@@ -13,6 +13,13 @@ import java.io.FileWriter;
 import java.io.IOException;
 
 public class ModConfig {
+    public static final double MAX_STRENGTH = 2.0;
+    public static final int MAX_SOFTNESS = 32;
+    public static final int DEFAULT_SOFTNESS = 4;
+    public static final int MIN_DISTANCE = 128;
+    public static final int MAX_DISTANCE = 2048;
+    public static final int DEFAULT_DISTANCE = 512;
+
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final File CONFIG_FILE = Services.PLATFORM.getConfigDirectory().resolve(Constants.MOD_ID + ".json").toFile();
     private static ModConfig INSTANCE;
@@ -21,10 +28,13 @@ public class ModConfig {
     public boolean cloudShadows = true;
 
     @SerializedName("cloudShadowStrength")
-    public double cloudShadowStrength = 0.7;
+    public double cloudShadowStrength = 0.75;
 
     @SerializedName("cloudShadowSoftness")
-    public int cloudShadowSoftness = 16;
+    public int cloudShadowSoftness = DEFAULT_SOFTNESS;
+
+    @SerializedName("cloudShadowDistance")
+    public int cloudShadowDistance = DEFAULT_DISTANCE;
 
     public static ModConfig get() {
         if (INSTANCE == null) {
@@ -61,7 +71,8 @@ public class ModConfig {
     }
 
     private void clamp() {
-        cloudShadowStrength = Mth.clamp(cloudShadowStrength, 0.0, 1.0);
-        cloudShadowSoftness = Mth.clamp(cloudShadowSoftness, 0, 64);
+        cloudShadowStrength = Mth.clamp(cloudShadowStrength, 0.0, MAX_STRENGTH);
+        cloudShadowSoftness = Mth.clamp(cloudShadowSoftness, 0, MAX_SOFTNESS);
+        cloudShadowDistance = Mth.clamp(cloudShadowDistance, MIN_DISTANCE, MAX_DISTANCE);
     }
 }

@@ -1,7 +1,6 @@
 package com.evandev.better_cloud_shadows.client;
 
-import com.evandev.better_cloud_shadows.compat.betterclouds.BetterCloudsCompat;
-import com.evandev.better_cloud_shadows.compat.betterclouds.CloudField;
+import com.evandev.better_cloud_shadows.clouds.CloudField;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.renderer.texture.DynamicTexture;
@@ -9,20 +8,23 @@ import net.minecraft.util.Mth;
 
 public final class CloudCoverageTexture implements AutoCloseable {
 
-    public static final int SIZE = 128;
-    private static final int RECENTER_MARGIN = SIZE / 4;
-    private static final int MAX_PAD = 12;
-
+    public static final int SIZE = 256;
+    public static final int MAX_DILATE_RADIUS = 4;
+    public static final int MAX_BLUR_RADIUS = 6;
+    private static final int RECENTER_MARGIN = 4;
+    public static final int SAFE_RADIUS = SIZE / 2 - RECENTER_MARGIN;
+    private static final int PAD = 16;
     private final DynamicTexture texture;
-    private final int paddedSize = SIZE + MAX_PAD * 2;
-    private final float[] front = new float[paddedSize * paddedSize];
-    private final float[] back = new float[paddedSize * paddedSize];
+    private final int padded = SIZE + PAD * 2;
+    private final float[] raw = new float[padded * padded];
+    private final float[] work = new float[padded * padded];
+    private final float[] scratch = new float[padded * padded];
 
-    private int originGridX;
-    private int originGridZ;
-    private long signature = Long.MIN_VALUE;
+    private int originX;
+    private int originZ;
+    private long signature;
     private int builtDilate = -1;
-    private int builtBlur = -1;
+    private float builtBlur = -1;
     private boolean populated;
 
     public CloudCoverageTexture() {
@@ -33,97 +35,144 @@ public final class CloudCoverageTexture implements AutoCloseable {
         return texture.getId();
     }
 
-    public int originGridX() {
-        return originGridX;
+    public int originX() {
+        return originX;
     }
 
-    public int originGridZ() {
-        return originGridZ;
+    public int originZ() {
+        return originZ;
     }
 
-    public void update(CloudField field, int centerGridX, int centerGridZ, int dilateRadius, int blurRadius) {
-        int wantedOriginX = centerGridX - SIZE / 2;
-        int wantedOriginZ = centerGridZ - SIZE / 2;
+    public void update(CloudField field, int centerX, int centerZ, int dilate, float blur) {
+        int wantedX = centerX - SIZE / 2;
+        int wantedZ = centerZ - SIZE / 2;
+        int dx = wantedX - originX;
+        int dz = wantedZ - originZ;
 
-        boolean stale = !populated
-                || field.signature() != signature
-                || dilateRadius != builtDilate
-                || blurRadius != builtBlur
-                || Math.abs(wantedOriginX - originGridX) > RECENTER_MARGIN
-                || Math.abs(wantedOriginZ - originGridZ) > RECENTER_MARGIN;
-        if (!stale) return;
+        boolean resample = !populated || field.signature() != signature;
+        boolean recenter = Math.abs(dx) > RECENTER_MARGIN || Math.abs(dz) > RECENTER_MARGIN;
+        if (!resample && !recenter && dilate == builtDilate && blur == builtBlur) return;
 
-        originGridX = wantedOriginX;
-        originGridZ = wantedOriginZ;
-        signature = field.signature();
-        builtDilate = dilateRadius;
-        builtBlur = blurRadius;
+        this.signature = field.signature();
+        this.builtDilate = dilate;
+        this.builtBlur = blur;
+
+        if (resample || Math.abs(dx) >= padded || Math.abs(dz) >= padded) {
+            originX = wantedX;
+            originZ = wantedZ;
+            sample(field, 0, 0, padded, padded);
+        } else if (recenter) {
+            originX = wantedX;
+            originZ = wantedZ;
+            scroll(field, dx, dz);
+        }
         populated = true;
 
-        samplePresence(field);
-        if (dilateRadius > 0) dilate(dilateRadius);
-        if (blurRadius > 0) {
-            blur(blurRadius);
-            blur(blurRadius);
+        System.arraycopy(raw, 0, work, 0, raw.length);
+        if (dilate > 0) dilate(dilate);
+        if (blur > 0) {
+            blur(blur);
+            blur(blur);
         }
         upload();
     }
 
-    private void samplePresence(CloudField field) {
-        for (int y = 0; y < paddedSize; y++) {
-            int gridZ = originGridZ - MAX_PAD + y;
-            int row = y * paddedSize;
-            for (int x = 0; x < paddedSize; x++) {
-                front[row + x] = BetterCloudsCompat.coverage(originGridX - MAX_PAD + x, gridZ, field);
+    private void scroll(CloudField field, int dx, int dz) {
+        int keptWidth = padded - Math.abs(dx);
+        int srcColumn = Math.max(dx, 0);
+        int dstColumn = Math.max(-dx, 0);
+
+        int from = dz > 0 ? 0 : padded - 1;
+        int to = dz > 0 ? padded : -1;
+        int direction = dz > 0 ? 1 : -1;
+        for (int y = from; y != to; y += direction) {
+            int src = y + dz;
+            if (src < 0 || src >= padded) continue;
+            System.arraycopy(raw, src * padded + srcColumn, raw, y * padded + dstColumn, keptWidth);
+        }
+
+        if (dz > 0) {
+            sample(field, 0, padded - dz, padded, padded);
+        } else if (dz < 0) {
+            sample(field, 0, 0, padded, -dz);
+        }
+
+        int rowStart = Math.max(-dz, 0);
+        int rowEnd = padded - Math.max(dz, 0);
+        if (dx > 0) {
+            sample(field, padded - dx, rowStart, padded, rowEnd);
+        } else if (dx < 0) {
+            sample(field, 0, rowStart, -dx, rowEnd);
+        }
+    }
+
+    private void sample(CloudField field, int minX, int minZ, int maxX, int maxZ) {
+        CloudField.Coverage coverage = field.coverage();
+        for (int y = minZ; y < maxZ; y++) {
+            int cellZ = originZ - PAD + y;
+            int row = y * padded;
+            for (int x = minX; x < maxX; x++) {
+                raw[row + x] = coverage.at(originX - PAD + x, cellZ);
             }
         }
     }
 
     private void dilate(int radius) {
-        for (int y = 0; y < paddedSize; y++) {
-            int row = y * paddedSize;
-            for (int x = 0; x < paddedSize; x++) {
+        for (int y = 0; y < padded; y++) {
+            int row = y * padded;
+            for (int x = 0; x < padded; x++) {
                 float best = 0;
                 for (int d = -radius; d <= radius; d++) {
-                    int sx = Mth.clamp(x + d, 0, paddedSize - 1);
-                    float value = front[row + sx];
+                    float value = work[row + Mth.clamp(x + d, 0, padded - 1)];
                     if (value > best) best = value;
                 }
-                back[row + x] = best;
+                scratch[row + x] = best;
             }
         }
-        for (int y = 0; y < paddedSize; y++) {
-            for (int x = 0; x < paddedSize; x++) {
+        for (int y = 0; y < padded; y++) {
+            for (int x = 0; x < padded; x++) {
                 float best = 0;
                 for (int d = -radius; d <= radius; d++) {
-                    int sy = Mth.clamp(y + d, 0, paddedSize - 1);
-                    float value = back[sy * paddedSize + x];
+                    float value = scratch[Mth.clamp(y + d, 0, padded - 1) * padded + x];
                     if (value > best) best = value;
                 }
-                front[y * paddedSize + x] = best;
+                work[y * padded + x] = best;
             }
         }
     }
 
-    private void blur(int radius) {
-        float weight = 1f / (radius * 2 + 1);
-        for (int y = 0; y < paddedSize; y++) {
-            int row = y * paddedSize;
-            for (int x = 0; x < paddedSize; x++) {
-                float sum = 0;
-                for (int d = -radius; d <= radius; d++) {
-                    sum += front[row + Mth.clamp(x + d, 0, paddedSize - 1)];
+    private void blur(float radius) {
+        int whole = (int) radius;
+        float edge = radius - whole;
+        float weight = 1f / (1f + 2f * whole + 2f * edge);
+
+        for (int y = 0; y < padded; y++) {
+            int row = y * padded;
+            for (int x = 0; x < padded; x++) {
+                float sum = work[row + x];
+                for (int d = 1; d <= whole; d++) {
+                    sum += work[row + Mth.clamp(x - d, 0, padded - 1)];
+                    sum += work[row + Mth.clamp(x + d, 0, padded - 1)];
                 }
-                back[row + x] = sum * weight;
+                if (edge > 0) {
+                    sum += edge * work[row + Mth.clamp(x - whole - 1, 0, padded - 1)];
+                    sum += edge * work[row + Mth.clamp(x + whole + 1, 0, padded - 1)];
+                }
+                scratch[row + x] = sum * weight;
             }
         }
-        for (int y = 0; y < paddedSize; y++) {
-            for (int x = 0; x < paddedSize; x++) {
-                float sum = 0;
-                for (int d = -radius; d <= radius; d++) {
-                    sum += back[Mth.clamp(y + d, 0, paddedSize - 1) * paddedSize + x];
+        for (int y = 0; y < padded; y++) {
+            for (int x = 0; x < padded; x++) {
+                float sum = scratch[y * padded + x];
+                for (int d = 1; d <= whole; d++) {
+                    sum += scratch[Mth.clamp(y - d, 0, padded - 1) * padded + x];
+                    sum += scratch[Mth.clamp(y + d, 0, padded - 1) * padded + x];
                 }
-                front[y * paddedSize + x] = sum * weight;
+                if (edge > 0) {
+                    sum += edge * scratch[Mth.clamp(y - whole - 1, 0, padded - 1) * padded + x];
+                    sum += edge * scratch[Mth.clamp(y + whole + 1, 0, padded - 1) * padded + x];
+                }
+                work[y * padded + x] = sum * weight;
             }
         }
     }
@@ -133,9 +182,9 @@ public final class CloudCoverageTexture implements AutoCloseable {
         if (pixels == null) return;
 
         for (int y = 0; y < SIZE; y++) {
-            int row = (y + MAX_PAD) * paddedSize + MAX_PAD;
+            int row = (y + PAD) * padded + PAD;
             for (int x = 0; x < SIZE; x++) {
-                int value = Mth.clamp(Math.round(front[row + x] * 255f), 0, 255);
+                int value = Mth.clamp(Math.round(work[row + x] * 255f), 0, 255);
                 pixels.setPixelRGBA(x, y, 0xFF000000 | (value << 16) | (value << 8) | value);
             }
         }

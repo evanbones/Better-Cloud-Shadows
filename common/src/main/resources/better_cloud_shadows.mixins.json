@@ -2,15 +2,16 @@
   "required": true,
   "minVersion": "0.8",
   "package": "com.evandev.better_cloud_shadows.mixin",
+  "plugin": "com.moulberry.mixinconstraints.ConstraintsMixinPlugin",
   "compatibilityLevel": "JAVA_18",
   "mixins": [
   ],
   "client": [
-    "ExampleMixin"
+    "LevelRendererAccessor",
+    "betterclouds.ChunkedGeneratorAccessor"
   ],
   "server": [],
   "injectors": {
     "defaultRequire": 1
   }
 }
-

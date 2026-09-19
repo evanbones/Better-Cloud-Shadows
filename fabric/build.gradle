@@ -24,6 +24,7 @@ dependencies {
     modCompileOnly "com.terraformersmc:modmenu:${mod_menu_version}"
     modRuntimeOnly "com.terraformersmc:modmenu:${mod_menu_version}"
 
+    include implementation("com.moulberry:mixinconstraints:${mixin_constraints_version}")
     implementation annotationProcessor("com.github.bawnorton.mixinsquared:mixinsquared-common:${mixin_squared_version}")
     include implementation("com.github.bawnorton.mixinsquared:mixinsquared-fabric:${mixin_squared_version}")
 
