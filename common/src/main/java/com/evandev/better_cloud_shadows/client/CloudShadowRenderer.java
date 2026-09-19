@@ -38,7 +38,6 @@ public final class CloudShadowRenderer {
 
     private static final float SHEAR_LIMIT = 512f;
     private static final float PENUMBRA_RATIO = 0.0093f;
-    private static final float BLUR_STEP = 16f;
 
     private static final String[] COVERAGE_ORIGIN_UNIFORMS = {
             "CoverageOrigin0", "CoverageOrigin1", "CoverageOrigin2", "CoverageOrigin3"
@@ -128,9 +127,7 @@ public final class CloudShadowRenderer {
                     Math.round((layer.footprint() - texelSize) / (2f * texelSize)),
                     0, CloudCoverageTexture.MAX_DILATE_RADIUS);
             float penumbra = PENUMBRA_RATIO * (layer.height() - referenceY);
-            float blur = Mth.clamp(
-                    Math.round((softness + penumbra) / texelSize * BLUR_STEP) / BLUR_STEP,
-                    0f, CloudCoverageTexture.MAX_BLUR_RADIUS);
+            float blur = CloudCoverageTexture.blurRadius((softness + penumbra) / texelSize);
 
             dirty |= coverage.update(i, layer, centerTexelX, centerTexelZ, dilate, blur);
 

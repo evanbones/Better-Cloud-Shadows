@@ -41,6 +41,13 @@ ordering = "AFTER"
 side = "CLIENT"
 
 [[dependencies.${ mod_id }]]
+modId = "cloud_layers"
+type = "optional"
+versionRange = "[0,)"
+ordering = "AFTER"
+side = "CLIENT"
+
+[[dependencies.${ mod_id }]]
 modId = "distanthorizons"
 type = "optional"
 versionRange = "[0,)"

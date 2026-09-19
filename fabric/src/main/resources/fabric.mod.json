@@ -41,6 +41,7 @@
   },
   "suggests": {
     "betterclouds": "*",
+    "cloud_layers": "*",
     "distanthorizons": "*"
   }
 }

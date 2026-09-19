@@ -14,6 +14,8 @@ public final class CloudCoverageTexture implements AutoCloseable {
     private static final int RECENTER_MARGIN = 4;
     public static final int SAFE_RADIUS = SIZE / 2 - RECENTER_MARGIN;
     private static final int PAD = 16;
+    private static final float MAX_BLUR_SIGMA = 5f;
+    private static final float SIGMA_STEP = 16f;
 
     private static final int PADDED = SIZE + PAD * 2;
 
@@ -33,6 +35,23 @@ public final class CloudCoverageTexture implements AutoCloseable {
 
     private static int toByte(float value) {
         return Mth.clamp(Math.round(value * 255f), 0, 255);
+    }
+
+    public static float blurRadius(float sigma) {
+        float target = Mth.clamp(Math.round(sigma * SIGMA_STEP) / SIGMA_STEP, 0f, MAX_BLUR_SIGMA);
+        if (target <= 0) return 0;
+
+        float variance = target * target * 0.5f;
+        for (int whole = 0; whole < MAX_BLUR_RADIUS; whole++) {
+            float inner = whole * (whole + 1) * (2 * whole + 1) / 3f;
+            float outer = (whole + 1) * (whole + 1);
+            float weight = 1 + 2 * whole;
+            if (variance > (inner + 2 * outer) / (weight + 2)) continue;
+
+            float edge = (variance * weight - inner) / (2 * (outer - variance));
+            return whole + Mth.clamp(edge, 0f, 1f);
+        }
+        return MAX_BLUR_RADIUS;
     }
 
     public int textureId() {
