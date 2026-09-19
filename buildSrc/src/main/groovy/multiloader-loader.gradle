@@ -44,9 +44,10 @@ publishMods {
         projectId = ""
         minecraftVersions.add("${minecraft_version}")
         client = true
-        server = true
+        server = false
 
-        requires("yacl")
+        optional("yacl")
+        optional("betterclouds")
     }
 
     modrinth {
@@ -54,6 +55,7 @@ publishMods {
         projectId = ""
         minecraftVersions.add("${minecraft_version}")
 
-        requires("yacl")
+        optional("yacl")
+        optional("betterclouds")
     }
 }

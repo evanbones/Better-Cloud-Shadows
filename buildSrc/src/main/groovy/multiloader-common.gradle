@@ -68,6 +68,11 @@ repositories {
         name = "TerraformersMC"
         url = "https://maven.terraformersmc.com/"
     }
+
+    maven {
+        name = "MixinSquared"
+        url = "https://maven.bawnorton.com/releases"
+    }
 }
 
 ['apiElements', 'runtimeElements'].each { variant ->

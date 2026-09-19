@@ -3,9 +3,21 @@
 <a href='https://fabricmc.net'><img alt="fabric" height="56" src="https://cdn.jsdelivr.net/npm/@intergrav/devins-badges@3/assets/cozy/supported/fabric_vector.svg"></a>
 <a href='https://neoforged.net/'><img alt="neoforge" height="56" src="https://cdn.jsdelivr.net/npm/@intergrav/devins-badges@3/assets/cozy/supported/neoforge_vector.svg"></a>
 
+Better Cloud Shadows is an extremely simple mod that casts subtle moving shadows beneath clouds.
+
+Shadows fade out near sunrise and sunset, while it is raining, and with distance.
+
+Heavily inspired by the (tragically unreleased) [cloud mod by cappin](https://www.youtube.com/watch?v=j306UFAPgDE).
+
+### Dependencies
+
+- **Better Clouds (optional)**: Casts cloud shadows under their clouds.
+- **[YACL](https://modrinth.com/mod/yacl)/[Mod Menu](https://modrinth.com/mod/modmenu) (optional)**: Adds an in-game
+  config screen.
+
 ## License
 
-[![Code license (MIT)](https://img.shields.io/badge/code%20license-MIT-green.svg?style=flat-square)](https://github.com/evanbones/Better-Cloud-Shadows/blob/1.20.1/LICENSE)
+[![Code license (MIT)](https://img.shields.io/badge/code%20license-MIT-green.svg?style=flat-square)](https://github.com/evanbones/Better-Cloud-Shadows/blob/1.21.1/LICENSE)
 
 ---
 

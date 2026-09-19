@@ -10,16 +10,22 @@ dependencies {
         parchment("org.parchmentmc.data:parchment-${parchment_minecraft}:${parchment_version}@zip")
     }
 
-    // EMI
-    modRuntimeOnly "dev.emi:emi-fabric:${emi_version}"
+    // Better Clouds
+    modCompileOnly "maven.modrinth:better-clouds:${better_clouds_fabric_id}"
+    modRuntimeOnly "maven.modrinth:better-clouds:${better_clouds_fabric_id}"
 
     // YACL
-    modImplementation "maven.modrinth:yacl:${yacl_version}-fabric"
-    implementation "org.quiltmc.parsers:json:0.3.0"
-    implementation "org.quiltmc.parsers:gson:0.3.0"
-    include "org.quiltmc.parsers:json:0.3.0"
-    include "org.quiltmc.parsers:gson:0.3.0"
-    modImplementation "com.terraformersmc:modmenu:${mod_menu_version}"
+    modCompileOnly "maven.modrinth:yacl:${yacl_version}-fabric"
+    modRuntimeOnly "maven.modrinth:yacl:${yacl_version}-fabric"
+    runtimeOnly "org.quiltmc.parsers:json:0.3.0"
+    runtimeOnly "org.quiltmc.parsers:gson:0.3.0"
+
+    // Mod Menu
+    modCompileOnly "com.terraformersmc:modmenu:${mod_menu_version}"
+    modRuntimeOnly "com.terraformersmc:modmenu:${mod_menu_version}"
+
+    implementation annotationProcessor("com.github.bawnorton.mixinsquared:mixinsquared-common:${mixin_squared_version}")
+    include implementation("com.github.bawnorton.mixinsquared:mixinsquared-fabric:${mixin_squared_version}")
 
     modImplementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"

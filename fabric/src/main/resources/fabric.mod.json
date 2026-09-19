@@ -13,7 +13,7 @@
   },
   "license": "${license}",
   "icon": "${mod_id}.png",
-  "environment": "*",
+  "environment": "client",
   "entrypoints": {
     "main": [
       "com.evandev.better_cloud_shadows.BetterCloudShadows"
@@ -23,9 +23,6 @@
     ],
     "modmenu": [
       "com.evandev.better_cloud_shadows.compat.ModMenuIntegration"
-    ],
-    "fabric-datagen": [
-      "com.evandev.better_cloud_shadows.datagen.TemplateDataGenerator"
     ]
   },
   "mixins": [
@@ -34,9 +31,15 @@
   ],
   "depends": {
     "fabricloader": ">=0.14",
-    "fabric": "*",
+    "fabric-rendering-v1": "*",
     "minecraft": "${minecraft_version}",
-    "java": ">=21",
-    "yet_another_config_lib_v3": ">=${yacl_version}"
+    "java": ">=21"
+  },
+  "recommends": {
+    "yet_another_config_lib_v3": "*",
+    "modmenu": "*"
+  },
+  "suggests": {
+    "betterclouds": "*"
   }
 }
