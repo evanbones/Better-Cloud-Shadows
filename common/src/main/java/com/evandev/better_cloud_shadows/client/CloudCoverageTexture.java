@@ -14,129 +14,168 @@ public final class CloudCoverageTexture implements AutoCloseable {
     private static final int RECENTER_MARGIN = 4;
     public static final int SAFE_RADIUS = SIZE / 2 - RECENTER_MARGIN;
     private static final int PAD = 16;
-    private final DynamicTexture texture;
-    private final int padded = SIZE + PAD * 2;
-    private final float[] raw = new float[padded * padded];
-    private final float[] work = new float[padded * padded];
-    private final float[] scratch = new float[padded * padded];
 
-    private int originX;
-    private int originZ;
-    private long signature;
-    private int builtDilate = -1;
-    private float builtBlur = -1;
-    private boolean populated;
+    private static final int PADDED = SIZE + PAD * 2;
+
+    private final DynamicTexture texture;
+    private final Slice[] slices = new Slice[CloudField.MAX_LAYERS];
+    private final float[] work = new float[PADDED * PADDED];
+    private final float[] scratch = new float[PADDED * PADDED];
+
+    private int uploadedLayers;
 
     public CloudCoverageTexture() {
         this.texture = new DynamicTexture(SIZE, SIZE, false);
+        for (int i = 0; i < slices.length; i++) {
+            slices[i] = new Slice();
+        }
+    }
+
+    private static int toByte(float value) {
+        return Mth.clamp(Math.round(value * 255f), 0, 255);
     }
 
     public int textureId() {
         return texture.getId();
     }
 
-    public int originX() {
-        return originX;
+    public int originX(int layer) {
+        return slices[layer].originX;
     }
 
-    public int originZ() {
-        return originZ;
+    public int originZ(int layer) {
+        return slices[layer].originZ;
     }
 
-    public void update(CloudField field, int centerX, int centerZ, int dilate, float blur) {
+    public int uploadedLayers() {
+        return uploadedLayers;
+    }
+
+    public boolean update(int layer, CloudField.Layer source, int centerX, int centerZ, int dilate, float blur) {
+        Slice slice = slices[layer];
+
         int wantedX = centerX - SIZE / 2;
         int wantedZ = centerZ - SIZE / 2;
-        int dx = wantedX - originX;
-        int dz = wantedZ - originZ;
+        int dx = wantedX - slice.originX;
+        int dz = wantedZ - slice.originZ;
 
-        boolean resample = !populated || field.signature() != signature;
+        boolean resample = !slice.populated || source.signature() != slice.signature;
         boolean recenter = Math.abs(dx) > RECENTER_MARGIN || Math.abs(dz) > RECENTER_MARGIN;
-        if (!resample && !recenter && dilate == builtDilate && blur == builtBlur) return;
+        if (!resample && !recenter && dilate == slice.builtDilate && blur == slice.builtBlur) return false;
 
-        this.signature = field.signature();
-        this.builtDilate = dilate;
-        this.builtBlur = blur;
+        slice.signature = source.signature();
+        slice.builtDilate = dilate;
+        slice.builtBlur = blur;
 
-        if (resample || Math.abs(dx) >= padded || Math.abs(dz) >= padded) {
-            originX = wantedX;
-            originZ = wantedZ;
-            sample(field, 0, 0, padded, padded);
+        if (resample || Math.abs(dx) >= PADDED || Math.abs(dz) >= PADDED) {
+            slice.originX = wantedX;
+            slice.originZ = wantedZ;
+            sample(slice, source, 0, 0, PADDED, PADDED);
         } else if (recenter) {
-            originX = wantedX;
-            originZ = wantedZ;
-            scroll(field, dx, dz);
+            slice.originX = wantedX;
+            slice.originZ = wantedZ;
+            scroll(slice, source, dx, dz);
         }
-        populated = true;
+        slice.populated = true;
 
-        System.arraycopy(raw, 0, work, 0, raw.length);
+        System.arraycopy(slice.raw, 0, work, 0, slice.raw.length);
         if (dilate > 0) dilate(dilate);
         if (blur > 0) {
             blur(blur);
             blur(blur);
         }
-        upload();
+        System.arraycopy(work, 0, slice.filtered, 0, work.length);
+        return true;
     }
 
-    private void scroll(CloudField field, int dx, int dz) {
-        int keptWidth = padded - Math.abs(dx);
+    public void upload(int layerCount) {
+        NativeImage pixels = texture.getPixels();
+        if (pixels == null) return;
+
+        float[] red = slices[0].filtered;
+        float[] green = layerCount > 1 ? slices[1].filtered : null;
+        float[] blue = layerCount > 2 ? slices[2].filtered : null;
+        float[] alpha = layerCount > 3 ? slices[3].filtered : null;
+
+        for (int y = 0; y < SIZE; y++) {
+            int row = (y + PAD) * PADDED + PAD;
+            for (int x = 0; x < SIZE; x++) {
+                int r = toByte(red[row + x]);
+                int g = green == null ? 0 : toByte(green[row + x]);
+                int b = blue == null ? 0 : toByte(blue[row + x]);
+                int a = alpha == null ? 0 : toByte(alpha[row + x]);
+                pixels.setPixelRGBA(x, y, (a << 24) | (b << 16) | (g << 8) | r);
+            }
+        }
+
+        RenderSystem.assertOnRenderThread();
+        texture.bind();
+        pixels.upload(0, 0, 0, 0, 0, SIZE, SIZE, true, true, false, false);
+        uploadedLayers = layerCount;
+    }
+
+    private void scroll(Slice slice, CloudField.Layer source, int dx, int dz) {
+        float[] raw = slice.raw;
+        int keptWidth = PADDED - Math.abs(dx);
         int srcColumn = Math.max(dx, 0);
         int dstColumn = Math.max(-dx, 0);
 
-        int from = dz > 0 ? 0 : padded - 1;
-        int to = dz > 0 ? padded : -1;
+        int from = dz > 0 ? 0 : PADDED - 1;
+        int to = dz > 0 ? PADDED : -1;
         int direction = dz > 0 ? 1 : -1;
         for (int y = from; y != to; y += direction) {
             int src = y + dz;
-            if (src < 0 || src >= padded) continue;
-            System.arraycopy(raw, src * padded + srcColumn, raw, y * padded + dstColumn, keptWidth);
+            if (src < 0 || src >= PADDED) continue;
+            System.arraycopy(raw, src * PADDED + srcColumn, raw, y * PADDED + dstColumn, keptWidth);
         }
 
         if (dz > 0) {
-            sample(field, 0, padded - dz, padded, padded);
+            sample(slice, source, 0, PADDED - dz, PADDED, PADDED);
         } else if (dz < 0) {
-            sample(field, 0, 0, padded, -dz);
+            sample(slice, source, 0, 0, PADDED, -dz);
         }
 
         int rowStart = Math.max(-dz, 0);
-        int rowEnd = padded - Math.max(dz, 0);
+        int rowEnd = PADDED - Math.max(dz, 0);
         if (dx > 0) {
-            sample(field, padded - dx, rowStart, padded, rowEnd);
+            sample(slice, source, PADDED - dx, rowStart, PADDED, rowEnd);
         } else if (dx < 0) {
-            sample(field, 0, rowStart, -dx, rowEnd);
+            sample(slice, source, 0, rowStart, -dx, rowEnd);
         }
     }
 
-    private void sample(CloudField field, int minX, int minZ, int maxX, int maxZ) {
-        CloudField.Coverage coverage = field.coverage();
+    private void sample(Slice slice, CloudField.Layer source, int minX, int minZ, int maxX, int maxZ) {
+        CloudField.Coverage coverage = source.coverage();
+        float[] raw = slice.raw;
         for (int y = minZ; y < maxZ; y++) {
-            int cellZ = originZ - PAD + y;
-            int row = y * padded;
+            int cellZ = slice.originZ - PAD + y;
+            int row = y * PADDED;
             for (int x = minX; x < maxX; x++) {
-                raw[row + x] = coverage.at(originX - PAD + x, cellZ);
+                raw[row + x] = coverage.at(slice.originX - PAD + x, cellZ);
             }
         }
     }
 
     private void dilate(int radius) {
-        for (int y = 0; y < padded; y++) {
-            int row = y * padded;
-            for (int x = 0; x < padded; x++) {
+        for (int y = 0; y < PADDED; y++) {
+            int row = y * PADDED;
+            for (int x = 0; x < PADDED; x++) {
                 float best = 0;
                 for (int d = -radius; d <= radius; d++) {
-                    float value = work[row + Mth.clamp(x + d, 0, padded - 1)];
+                    float value = work[row + Mth.clamp(x + d, 0, PADDED - 1)];
                     if (value > best) best = value;
                 }
                 scratch[row + x] = best;
             }
         }
-        for (int y = 0; y < padded; y++) {
-            for (int x = 0; x < padded; x++) {
+        for (int y = 0; y < PADDED; y++) {
+            for (int x = 0; x < PADDED; x++) {
                 float best = 0;
                 for (int d = -radius; d <= radius; d++) {
-                    float value = scratch[Mth.clamp(y + d, 0, padded - 1) * padded + x];
+                    float value = scratch[Mth.clamp(y + d, 0, PADDED - 1) * PADDED + x];
                     if (value > best) best = value;
                 }
-                work[y * padded + x] = best;
+                work[y * PADDED + x] = best;
             }
         }
     }
@@ -146,56 +185,51 @@ public final class CloudCoverageTexture implements AutoCloseable {
         float edge = radius - whole;
         float weight = 1f / (1f + 2f * whole + 2f * edge);
 
-        for (int y = 0; y < padded; y++) {
-            int row = y * padded;
-            for (int x = 0; x < padded; x++) {
+        for (int y = 0; y < PADDED; y++) {
+            int row = y * PADDED;
+            for (int x = 0; x < PADDED; x++) {
                 float sum = work[row + x];
                 for (int d = 1; d <= whole; d++) {
-                    sum += work[row + Mth.clamp(x - d, 0, padded - 1)];
-                    sum += work[row + Mth.clamp(x + d, 0, padded - 1)];
+                    sum += work[row + Mth.clamp(x - d, 0, PADDED - 1)];
+                    sum += work[row + Mth.clamp(x + d, 0, PADDED - 1)];
                 }
                 if (edge > 0) {
-                    sum += edge * work[row + Mth.clamp(x - whole - 1, 0, padded - 1)];
-                    sum += edge * work[row + Mth.clamp(x + whole + 1, 0, padded - 1)];
+                    sum += edge * work[row + Mth.clamp(x - whole - 1, 0, PADDED - 1)];
+                    sum += edge * work[row + Mth.clamp(x + whole + 1, 0, PADDED - 1)];
                 }
                 scratch[row + x] = sum * weight;
             }
         }
-        for (int y = 0; y < padded; y++) {
-            for (int x = 0; x < padded; x++) {
-                float sum = scratch[y * padded + x];
+        for (int y = 0; y < PADDED; y++) {
+            for (int x = 0; x < PADDED; x++) {
+                float sum = scratch[y * PADDED + x];
                 for (int d = 1; d <= whole; d++) {
-                    sum += scratch[Mth.clamp(y - d, 0, padded - 1) * padded + x];
-                    sum += scratch[Mth.clamp(y + d, 0, padded - 1) * padded + x];
+                    sum += scratch[Mth.clamp(y - d, 0, PADDED - 1) * PADDED + x];
+                    sum += scratch[Mth.clamp(y + d, 0, PADDED - 1) * PADDED + x];
                 }
                 if (edge > 0) {
-                    sum += edge * scratch[Mth.clamp(y - whole - 1, 0, padded - 1) * padded + x];
-                    sum += edge * scratch[Mth.clamp(y + whole + 1, 0, padded - 1) * padded + x];
+                    sum += edge * scratch[Mth.clamp(y - whole - 1, 0, PADDED - 1) * PADDED + x];
+                    sum += edge * scratch[Mth.clamp(y + whole + 1, 0, PADDED - 1) * PADDED + x];
                 }
-                work[y * padded + x] = sum * weight;
+                work[y * PADDED + x] = sum * weight;
             }
         }
-    }
-
-    private void upload() {
-        NativeImage pixels = texture.getPixels();
-        if (pixels == null) return;
-
-        for (int y = 0; y < SIZE; y++) {
-            int row = (y + PAD) * padded + PAD;
-            for (int x = 0; x < SIZE; x++) {
-                int value = Mth.clamp(Math.round(work[row + x] * 255f), 0, 255);
-                pixels.setPixelRGBA(x, y, 0xFF000000 | (value << 16) | (value << 8) | value);
-            }
-        }
-
-        RenderSystem.assertOnRenderThread();
-        texture.bind();
-        pixels.upload(0, 0, 0, 0, 0, SIZE, SIZE, true, true, false, false);
     }
 
     @Override
     public void close() {
         texture.close();
+    }
+
+    private static final class Slice {
+        final float[] raw = new float[PADDED * PADDED];
+        final float[] filtered = new float[PADDED * PADDED];
+
+        int originX;
+        int originZ;
+        long signature;
+        int builtDilate = -1;
+        float builtBlur = -1;
+        boolean populated;
     }
 }

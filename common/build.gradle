@@ -20,6 +20,7 @@ neoForge {
 dependencies {
     compileOnly "maven.modrinth:yacl:${yacl_version}-neoforge"
     compileOnly "maven.modrinth:better-clouds:${better_clouds_neoforge_id}"
+    compileOnly "maven.modrinth:distanthorizons:${distant_horizons_id}"
 
     compileOnly "com.moulberry:mixinconstraints:${mixin_constraints_version}"
     compileOnly group: 'org.spongepowered', name: 'mixin', version: '0.8.5'

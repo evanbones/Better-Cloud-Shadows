@@ -8,7 +8,8 @@
   ],
   "client": [
     "LevelRendererAccessor",
-    "betterclouds.ChunkedGeneratorAccessor"
+    "betterclouds.ChunkedGeneratorAccessor",
+    "distanthorizons.RenderableBoxGroupMixin"
   ],
   "server": [],
   "injectors": {

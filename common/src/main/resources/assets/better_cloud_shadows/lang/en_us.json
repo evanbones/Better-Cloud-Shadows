@@ -6,8 +6,15 @@
   "config.better_cloud_shadows.option.cloudShadowStrength": "Cloud Shadow Strength",
   "config.better_cloud_shadows.option.cloudShadowStrength.tooltip": "How dark cloud shadows get. They're always lighter near sunrise/sunset and while it's raining.",
   "config.better_cloud_shadows.option.cloudShadowSoftness": "Cloud Shadow Softness",
-  "config.better_cloud_shadows.option.cloudShadowSoftness.tooltip": "How far the edges of cloud shadows blur out, in blocks.",
+  "config.better_cloud_shadows.option.cloudShadowSoftness.tooltip": "How far the edges of cloud shadows blur out, in blocks. Higher cloud layers blur a little more on top of this.",
+  "config.better_cloud_shadows.option.cloudShadowShear": "Sun Shear",
+  "config.better_cloud_shadows.option.cloudShadowShear.tooltip": "How far shadows slide away from directly under their cloud as the sun gets lower.",
+  "config.better_cloud_shadows.option.matchCloudRenderDistance": "Match Cloud Render Distance",
+  "config.better_cloud_shadows.option.matchCloudRenderDistance.tooltip": "Draws shadows as far as the clouds casting them reach. Turn off to manually set the distance.",
   "config.better_cloud_shadows.option.cloudShadowDistance": "Cloud Shadow Distance",
-  "config.better_cloud_shadows.option.cloudShadowDistance.tooltip": "How far away cloud shadows are still drawn, in blocks. May be capped by your cloud render distance.",
-  "config.better_cloud_shadows.blocks": "%s blocks"
+  "config.better_cloud_shadows.option.cloudShadowDistance.tooltip": "How far away cloud shadows are drawn, in blocks. Ignored while Match Cloud Render Distance is on, and capped by the cloud range.",
+  "config.better_cloud_shadows.option.distantHorizonsClouds": "Distant Horizons Clouds",
+  "config.better_cloud_shadows.option.distantHorizonsClouds.tooltip": "Also casts shadows from Distant Horizons' cloud layers. Needs Distant Horizons installed with its cloud rendering turned on.",
+  "config.better_cloud_shadows.blocks": "%s blocks",
+  "config.better_cloud_shadows.percent": "%s%%"
 }

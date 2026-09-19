@@ -57,12 +57,13 @@ final class BetterCloudsBridge {
         float fuzziness = config.fuzziness;
         float samplingScale = config.samplingScale;
 
-        return new CloudField(
+        return CloudField.single(
                 generator.originX() - spacing * 0.5,
                 generator.originZ() - spacing * 0.5,
                 spacing,
                 config.sizeXZ,
                 cloudHeight + config.yOffset,
+                config.sizeY,
                 config.blockDistance(),
                 signatureOf(noise, config, cloudiness),
                 (cellX, cellZ) -> coverage(noise, cellX, cellZ, spacing, sparsity, fuzziness, samplingScale, cloudiness)

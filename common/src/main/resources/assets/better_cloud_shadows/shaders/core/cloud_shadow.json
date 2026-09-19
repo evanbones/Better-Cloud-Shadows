@@ -1,9 +1,4 @@
 {
-    "blend": {
-        "func": "add",
-        "srcrgb": "srcalpha",
-        "dstrgb": "1-srcalpha"
-    },
     "vertex": "better_cloud_shadows:cloud_shadow",
     "fragment": "better_cloud_shadows:cloud_shadow",
     "attributes": [
@@ -11,14 +6,24 @@
     ],
     "samplers": [
         { "name": "DepthSampler" },
+        { "name": "DhDepthSampler" },
         { "name": "CoverageSampler" }
     ],
     "uniforms": [
         { "name": "InvViewProjMat", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+        { "name": "DhInvViewProjMat", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+        { "name": "UseDhDepth", "type": "int", "count": 1, "values": [ 0 ] },
         { "name": "CameraPos", "type": "float", "count": 3, "values": [ 0.0, 0.0, 0.0 ] },
         { "name": "SunDir", "type": "float", "count": 3, "values": [ 0.0, 1.0, 0.0 ] },
-        { "name": "CloudHeight", "type": "float", "count": 1, "values": [ 192.0 ] },
-        { "name": "CoverageOrigin", "type": "float", "count": 4, "values": [ 0.0, 0.0, 1.0, 0.08 ] },
+        { "name": "ShearScale", "type": "float", "count": 1, "values": [ 1.0 ] },
+        { "name": "ShearLimit", "type": "float", "count": 1, "values": [ 512.0 ] },
+        { "name": "CloudHeights", "type": "float", "count": 4, "values": [ 192.0, 192.0, 192.0, 192.0 ] },
+        { "name": "CloudThickness", "type": "float", "count": 4, "values": [ 4.0, 4.0, 4.0, 4.0 ] },
+        { "name": "LayerCount", "type": "int", "count": 1, "values": [ 1 ] },
+        { "name": "CoverageOrigin0", "type": "float", "count": 4, "values": [ 0.0, 0.0, 1.0, 0.08 ] },
+        { "name": "CoverageOrigin1", "type": "float", "count": 4, "values": [ 0.0, 0.0, 1.0, 0.08 ] },
+        { "name": "CoverageOrigin2", "type": "float", "count": 4, "values": [ 0.0, 0.0, 1.0, 0.08 ] },
+        { "name": "CoverageOrigin3", "type": "float", "count": 4, "values": [ 0.0, 0.0, 1.0, 0.08 ] },
         { "name": "ShadowColor", "type": "float", "count": 4, "values": [ 0.0, 0.0, 0.0, 0.45 ] },
         { "name": "FadeParams", "type": "float", "count": 2, "values": [ 64.0, 96.0 ] },
         { "name": "FogStart", "type": "float", "count": 1, "values": [ 0.0 ] },

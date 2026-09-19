@@ -20,6 +20,7 @@ public final class VanillaClouds {
     private static final float CELL_SIZE = 12f;
     private static final float TRAVEL_SPEED = 0.03f;
     private static final float Z_OFFSET = 0.33f;
+    private static final float THICKNESS = 4f;
     private static final float SHADOW_DISTANCE = CELL_SIZE * 32f;
 
     private static float[] alpha;
@@ -40,12 +41,13 @@ public final class VanillaClouds {
         int ticks = ((LevelRendererAccessor) Minecraft.getInstance().levelRenderer).better_cloud_shadows$ticks();
         double travel = (ticks + partialTick) * TRAVEL_SPEED;
 
-        return new CloudField(
+        return CloudField.single(
                 -travel,
                 -Z_OFFSET * CELL_SIZE,
                 CELL_SIZE,
                 CELL_SIZE,
                 cloudHeight,
+                THICKNESS,
                 SHADOW_DISTANCE,
                 signature,
                 VanillaClouds::coverage

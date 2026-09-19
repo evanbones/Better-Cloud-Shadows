@@ -15,9 +15,11 @@ import java.io.IOException;
 public class ModConfig {
     public static final double MAX_STRENGTH = 2.0;
     public static final int MAX_SOFTNESS = 32;
+    public static final double MAX_SHEAR = 1.0;
+    public static final double DEFAULT_SHEAR = 1.0;
     public static final int DEFAULT_SOFTNESS = 4;
     public static final int MIN_DISTANCE = 128;
-    public static final int MAX_DISTANCE = 2048;
+    public static final int MAX_DISTANCE = 8192;
     public static final int DEFAULT_DISTANCE = 512;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -33,8 +35,17 @@ public class ModConfig {
     @SerializedName("cloudShadowSoftness")
     public int cloudShadowSoftness = DEFAULT_SOFTNESS;
 
+    @SerializedName("matchCloudRenderDistance")
+    public boolean matchCloudRenderDistance = true;
+
     @SerializedName("cloudShadowDistance")
     public int cloudShadowDistance = DEFAULT_DISTANCE;
+
+    @SerializedName("cloudShadowShear")
+    public double cloudShadowShear = DEFAULT_SHEAR;
+
+    @SerializedName("distantHorizonsClouds")
+    public boolean distantHorizonsClouds = true;
 
     public static ModConfig get() {
         if (INSTANCE == null) {
@@ -73,6 +84,7 @@ public class ModConfig {
     private void clamp() {
         cloudShadowStrength = Mth.clamp(cloudShadowStrength, 0.0, MAX_STRENGTH);
         cloudShadowSoftness = Mth.clamp(cloudShadowSoftness, 0, MAX_SOFTNESS);
+        cloudShadowShear = Mth.clamp(cloudShadowShear, 0.0, MAX_SHEAR);
         cloudShadowDistance = Mth.clamp(cloudShadowDistance, MIN_DISTANCE, MAX_DISTANCE);
     }
 }

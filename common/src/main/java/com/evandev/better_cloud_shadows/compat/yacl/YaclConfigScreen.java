@@ -1,5 +1,6 @@
 package com.evandev.better_cloud_shadows.compat.yacl;
 
+import com.evandev.better_cloud_shadows.compat.distanthorizons.DistantHorizonsCompat;
 import com.evandev.better_cloud_shadows.config.ModConfig;
 import dev.isxander.yacl3.api.ConfigCategory;
 import dev.isxander.yacl3.api.Option;
@@ -49,6 +50,26 @@ public final class YaclConfigScreen {
                                         .step(1)
                                         .formatValue(value -> Component.translatable("config.better_cloud_shadows.blocks", value)))
                                 .build())
+                        .option(Option.<Double>createBuilder()
+                                .name(name("cloudShadowShear"))
+                                .description(tooltip("cloudShadowShear"))
+                                .binding(ModConfig.DEFAULT_SHEAR,
+                                        () -> config.cloudShadowShear,
+                                        value -> config.cloudShadowShear = value)
+                                .controller(opt -> DoubleSliderControllerBuilder.create(opt)
+                                        .range(0.0, ModConfig.MAX_SHEAR)
+                                        .step(0.05)
+                                        .formatValue(value -> Component.translatable(
+                                                "config.better_cloud_shadows.percent", Math.round(value * 100))))
+                                .build())
+                        .option(Option.<Boolean>createBuilder()
+                                .name(name("matchCloudRenderDistance"))
+                                .description(tooltip("matchCloudRenderDistance"))
+                                .binding(true,
+                                        () -> config.matchCloudRenderDistance,
+                                        value -> config.matchCloudRenderDistance = value)
+                                .controller(TickBoxControllerBuilder::create)
+                                .build())
                         .option(Option.<Integer>createBuilder()
                                 .name(name("cloudShadowDistance"))
                                 .description(tooltip("cloudShadowDistance"))
@@ -59,6 +80,15 @@ public final class YaclConfigScreen {
                                         .range(ModConfig.MIN_DISTANCE, ModConfig.MAX_DISTANCE)
                                         .step(64)
                                         .formatValue(value -> Component.translatable("config.better_cloud_shadows.blocks", value)))
+                                .build())
+                        .option(Option.<Boolean>createBuilder()
+                                .name(name("distantHorizonsClouds"))
+                                .description(tooltip("distantHorizonsClouds"))
+                                .available(DistantHorizonsCompat.isLoaded())
+                                .binding(true,
+                                        () -> config.distantHorizonsClouds,
+                                        value -> config.distantHorizonsClouds = value)
+                                .controller(TickBoxControllerBuilder::create)
                                 .build())
                         .build())
                 .build()
