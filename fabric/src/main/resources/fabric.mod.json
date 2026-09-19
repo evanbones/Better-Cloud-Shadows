@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "${mod_id}",
+  "version": "${version}",
+  "name": "${mod_name}",
+  "description": "${description}",
+  "authors": [
+    "${mod_author}"
+  ],
+  "contact": {
+    "homepage": "https://github.com/evanbones/Better-Cloud-Shadows",
+    "sources": "https://github.com/evanbones/Better-Cloud-Shadows"
+  },
+  "license": "${license}",
+  "icon": "${mod_id}.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.evandev.better_cloud_shadows.BetterCloudShadows"
+    ],
+    "client": [
+      "com.evandev.better_cloud_shadows.client.BetterCloudShadowsClient"
+    ],
+    "modmenu": [
+      "com.evandev.better_cloud_shadows.compat.ModMenuIntegration"
+    ],
+    "fabric-datagen": [
+      "com.evandev.better_cloud_shadows.datagen.TemplateDataGenerator"
+    ]
+  },
+  "mixins": [
+    "${mod_id}.mixins.json",
+    "${mod_id}.fabric.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.14",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}",
+    "java": ">=21",
+    "yet_another_config_lib_v3": ">=${yacl_version}"
+  }
+}
