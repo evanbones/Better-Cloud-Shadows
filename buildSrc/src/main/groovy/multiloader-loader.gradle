@@ -47,8 +47,8 @@ publishMods {
         server = false
 
         optional("yacl")
-        optional("betterclouds")
-        optional("distanthorizons")
+        optional("better-clouds")
+        optional("distant-horizons")
         optional("cloud-layers")
     }
 
@@ -58,7 +58,7 @@ publishMods {
         minecraftVersions.add("${minecraft_version}")
 
         optional("yacl")
-        optional("betterclouds")
+        optional("better-clouds")
         optional("distanthorizons")
         optional("cloud-layers")
     }
