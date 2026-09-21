@@ -44,11 +44,11 @@ dependencies {
 
     // Cloud Layers
     compileOnly "maven.modrinth:cloud-layers:${cloud_layers_neoforge_id}"
-    runtimeOnly "maven.modrinth:cloud-layers:${cloud_layers_neoforge_id}"
+    //runtimeOnly "maven.modrinth:cloud-layers:${cloud_layers_neoforge_id}"
 
     // Distant Horizons
     compileOnly "maven.modrinth:distanthorizons:${distant_horizons_id}"
-    runtimeOnly "maven.modrinth:distanthorizons:${distant_horizons_id}"
+    //runtimeOnly "maven.modrinth:distanthorizons:${distant_horizons_id}"
 
     // YACL
     compileOnly "maven.modrinth:yacl:${yacl_version}-neoforge"

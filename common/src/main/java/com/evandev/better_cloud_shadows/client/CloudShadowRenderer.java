@@ -49,6 +49,7 @@ public final class CloudShadowRenderer {
     private static final float[] layerInvExtent = new float[CloudField.MAX_LAYERS];
 
     private static final Matrix4f dhInverseViewProjection = new Matrix4f();
+    private static final int[] scissorBox = new int[4];
 
     private static ShaderInstance shader;
     private static RenderTarget depthCopy;
@@ -154,6 +155,8 @@ public final class CloudShadowRenderer {
         }
 
         RenderSystem.depthMask(true);
+        boolean scissorEnabled = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
+        if (scissorEnabled) GL11.glGetIntegerv(GL11.GL_SCISSOR_BOX, scissorBox);
         RenderSystem.disableScissor();
         depthCopy.copyDepthFrom(main);
         main.bindWrite(false);
@@ -218,6 +221,10 @@ public final class CloudShadowRenderer {
         RenderSystem.depthMask(true);
         RenderSystem.enableDepthTest();
         RenderSystem.disableBlend();
+        RenderSystem.defaultBlendFunc();
+        if (scissorEnabled) {
+            RenderSystem.enableScissor(scissorBox[0], scissorBox[1], scissorBox[2], scissorBox[3]);
+        }
     }
 
     public static void reset() {
