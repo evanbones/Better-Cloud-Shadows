@@ -18,6 +18,10 @@ dependencies {
     modCompileOnly "maven.modrinth:cloud-layers:${cloud_layers_fabric_id}"
     //modRuntimeOnly "maven.modrinth:cloud-layers:${cloud_layers_fabric_id}"
 
+    // Cirrus
+    modCompileOnly "maven.modrinth:cirrus:${cirrus_fabric_id}"
+    //modRuntimeOnly "maven.modrinth:cirrus:${cirrus_fabric_id}"
+
     // Distant Horizons
     compileOnly "maven.modrinth:distanthorizons:${distant_horizons_id}"
     //modRuntimeOnly "maven.modrinth:distanthorizons:${distant_horizons_id}"

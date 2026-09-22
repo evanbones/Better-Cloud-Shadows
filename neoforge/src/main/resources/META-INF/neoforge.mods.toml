@@ -48,6 +48,13 @@ ordering = "AFTER"
 side = "CLIENT"
 
 [[dependencies.${ mod_id }]]
+modId = "cirrus"
+type = "optional"
+versionRange = "[0,)"
+ordering = "AFTER"
+side = "CLIENT"
+
+[[dependencies.${ mod_id }]]
 modId = "distanthorizons"
 type = "optional"
 versionRange = "[0,)"

@@ -17,6 +17,7 @@ Heavily inspired by the (tragically unreleased) [cloud mod by cappin](https://ww
 - **[Better Clouds](https://modrinth.com/mod/better-clouds) (optional)**: Casts cloud shadows under their clouds.
 - **[Cloud Layers](https://modrinth.com/mod/cloud-layers) (optional)**: Casts cloud shadows under each of their cloud
   layers.
+- **[Cirrus](https://modrinth.com/mod/cirrus) (optional)**: Casts cloud shadows under each of their cloud layers.
 - **[Distant Horizons](https://modrinth.com/mod/distanthorizons) (optional)**: Casts cloud shadows in LOD chunks.
 - **[YACL](https://modrinth.com/mod/yacl)/[Mod Menu](https://modrinth.com/mod/modmenu) (optional)**: Adds an in-game
   config screen.

@@ -40,11 +40,16 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 dependencies {
     // Better Clouds
     compileOnly "maven.modrinth:better-clouds:${better_clouds_neoforge_id}"
-    runtimeOnly "maven.modrinth:better-clouds:${better_clouds_neoforge_id}"
+    //runtimeOnly "maven.modrinth:better-clouds:${better_clouds_neoforge_id}"
 
     // Cloud Layers
     compileOnly "maven.modrinth:cloud-layers:${cloud_layers_neoforge_id}"
-    //runtimeOnly "maven.modrinth:cloud-layers:${cloud_layers_neoforge_id}"
+    runtimeOnly "maven.modrinth:cloud-layers:${cloud_layers_neoforge_id}"
+    runtimeOnly "maven.modrinth:cloth-config:${cloth_config_version}+neoforge"
+
+    // Cirrus
+    compileOnly "maven.modrinth:cirrus:${cirrus_neoforge_id}"
+    //runtimeOnly "maven.modrinth:cirrus:${cirrus_neoforge_id}"
 
     // Distant Horizons
     compileOnly "maven.modrinth:distanthorizons:${distant_horizons_id}"
