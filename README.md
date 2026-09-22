@@ -10,7 +10,7 @@ Shadows fade out near sunrise and sunset, while it is raining, and with distance
 Heavily inspired by the (tragically unreleased) [cloud mod by cappin](https://www.youtube.com/watch?v=j306UFAPgDE).
 
 **High render distances or mods like [Voxy](https://modrinth.com/mod/voxy)/[Distant Horizons](https://modrinth.com/mod/distanthorizons) are recommended!**
-![distant_horizons.png](images/distant_horizons.png)
+![distant_horizons.png](https://raw.githubusercontent.com/evanbones/Better-Cloud-Shadows/refs/heads/1.21.1/images/distant_horizons.png)
 
 ### Dependencies
 
