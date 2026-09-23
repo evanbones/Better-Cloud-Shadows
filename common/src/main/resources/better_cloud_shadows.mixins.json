@@ -9,6 +9,7 @@
   "client": [
     "LevelRendererAccessor",
     "betterclouds.ChunkedGeneratorAccessor",
+    "cloudtweaks.CustomCloudRendererAccessor",
     "distanthorizons.RenderableBoxGroupMixin"
   ],
   "server": [],

@@ -49,6 +49,8 @@ publishMods {
         optional("yacl")
         optional("better-clouds")
         optional("distant-horizons")
+        optional("cirrus")
+        optional("cloud_tweaks")
         optional("cloud-layers")
     }
 
@@ -60,6 +62,8 @@ publishMods {
         optional("yacl")
         optional("better-clouds")
         optional("distanthorizons")
+        optional("cirrus")
+        optional("cloud_tweaks")
         optional("cloud-layers")
     }
 }

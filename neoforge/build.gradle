@@ -44,12 +44,16 @@ dependencies {
 
     // Cloud Layers
     compileOnly "maven.modrinth:cloud-layers:${cloud_layers_neoforge_id}"
-    runtimeOnly "maven.modrinth:cloud-layers:${cloud_layers_neoforge_id}"
+    //runtimeOnly "maven.modrinth:cloud-layers:${cloud_layers_neoforge_id}"
     runtimeOnly "maven.modrinth:cloth-config:${cloth_config_version}+neoforge"
 
     // Cirrus
     compileOnly "maven.modrinth:cirrus:${cirrus_neoforge_id}"
     //runtimeOnly "maven.modrinth:cirrus:${cirrus_neoforge_id}"
+
+    // Cloud Tweaks
+    compileOnly "maven.modrinth:cloud_tweaks:${cloud_tweaks_neoforge_id}"
+    runtimeOnly "maven.modrinth:cloud_tweaks:${cloud_tweaks_neoforge_id}"
 
     // Distant Horizons
     compileOnly "maven.modrinth:distanthorizons:${distant_horizons_id}"

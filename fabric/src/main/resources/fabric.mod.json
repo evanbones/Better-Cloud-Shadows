@@ -43,6 +43,7 @@
     "betterclouds": "*",
     "cloud_layers": "*",
     "cirrus": "*",
+    "cloud_tweaks": "*",
     "distanthorizons": "*"
   }
 }

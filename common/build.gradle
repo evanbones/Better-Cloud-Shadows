@@ -22,6 +22,7 @@ dependencies {
     compileOnly "maven.modrinth:better-clouds:${better_clouds_neoforge_id}"
     compileOnly "maven.modrinth:cloud-layers:${cloud_layers_neoforge_id}"
     compileOnly "maven.modrinth:cirrus:${cirrus_neoforge_id}"
+    compileOnly "maven.modrinth:cloud_tweaks:${cloud_tweaks_neoforge_id}"
     compileOnly "maven.modrinth:distanthorizons:${distant_horizons_id}"
 
     compileOnly "com.moulberry:mixinconstraints:${mixin_constraints_version}"

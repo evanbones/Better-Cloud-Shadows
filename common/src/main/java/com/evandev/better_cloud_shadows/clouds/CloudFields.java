@@ -3,6 +3,7 @@ package com.evandev.better_cloud_shadows.clouds;
 import com.evandev.better_cloud_shadows.compat.betterclouds.BetterCloudsCompat;
 import com.evandev.better_cloud_shadows.compat.cirrus.CirrusCompat;
 import com.evandev.better_cloud_shadows.compat.cloudlayers.CloudLayersCompat;
+import com.evandev.better_cloud_shadows.compat.cloudtweaks.CloudTweaksCompat;
 import com.evandev.better_cloud_shadows.compat.distanthorizons.DistantHorizonsCompat;
 import com.evandev.better_cloud_shadows.config.ModConfig;
 import net.minecraft.client.CloudStatus;
@@ -19,7 +20,9 @@ public final class CloudFields {
         if (CirrusCompat.ownsClouds()) {
             near = CirrusCompat.field(level, partialTick);
         } else if (Minecraft.getInstance().options.getCloudsType() != CloudStatus.OFF) {
-            if (CloudLayersCompat.ownsClouds()) {
+            if (CloudTweaksCompat.ownsClouds()) {
+                near = CloudTweaksCompat.field(level, partialTick);
+            } else if (CloudLayersCompat.ownsClouds()) {
                 near = CloudLayersCompat.field(level, partialTick);
             } else if (BetterCloudsCompat.ownsClouds(level)) {
                 near = BetterCloudsCompat.field(level, partialTick);
@@ -39,6 +42,7 @@ public final class CloudFields {
         VanillaClouds.invalidate();
         CirrusCompat.invalidate();
         CloudLayersCompat.invalidate();
+        CloudTweaksCompat.invalidate();
         DistantHorizonsCompat.invalidate();
     }
 }
