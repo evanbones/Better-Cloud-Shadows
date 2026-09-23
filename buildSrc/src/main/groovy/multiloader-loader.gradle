@@ -63,7 +63,7 @@ publishMods {
         optional("better-clouds")
         optional("distanthorizons")
         optional("cirrus")
-        optional("cloud_tweaks")
+        optional("cloud-tweaks")
         optional("cloud-layers")
     }
 }
