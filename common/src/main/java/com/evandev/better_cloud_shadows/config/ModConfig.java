@@ -29,6 +29,9 @@ public class ModConfig {
     @SerializedName("cloudShadows")
     public boolean cloudShadows = true;
 
+    @SerializedName("affectedByLights")
+    public boolean affectedByLights = true;
+
     @SerializedName("cloudShadowStrength")
     public double cloudShadowStrength = 0.75;
 

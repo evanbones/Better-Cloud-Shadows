@@ -3,6 +3,8 @@
   "config.better_cloud_shadows.category.general": "General",
   "config.better_cloud_shadows.option.cloudShadows": "Cloud Shadows",
   "config.better_cloud_shadows.option.cloudShadows.tooltip": "Casts moving shadows on the ground beneath the clouds. Uses Better Clouds' clouds when installed, and vanilla clouds otherwise.",
+  "config.better_cloud_shadows.option.affectedByLights": "Affected by Lights",
+  "config.better_cloud_shadows.option.affectedByLights.tooltip": "Fades out cloud shadows around light sources like torches, lanterns, and campfires.",
   "config.better_cloud_shadows.option.cloudShadowStrength": "Cloud Shadow Strength",
   "config.better_cloud_shadows.option.cloudShadowStrength.tooltip": "How dark cloud shadows get. They're always lighter near sunrise/sunset and while it's raining.",
   "config.better_cloud_shadows.option.cloudShadowSoftness": "Cloud Shadow Softness",

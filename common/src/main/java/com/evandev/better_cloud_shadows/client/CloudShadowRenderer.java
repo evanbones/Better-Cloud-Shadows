@@ -15,6 +15,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.util.Mth;
+import com.evandev.better_cloud_shadows.compat.lambdynlights.LambDynamicLightsCompat;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
@@ -54,6 +57,7 @@ public final class CloudShadowRenderer {
     private static ShaderInstance shader;
     private static RenderTarget depthCopy;
     private static CloudCoverageTexture coverage;
+    private static BlockLightTexture blockLight;
     private static ClientLevel lastLevel;
 
     private CloudShadowRenderer() {
@@ -199,6 +203,60 @@ public final class CloudShadowRenderer {
         instance.safeGetUniform("ShadowColor").set(tintRed, tintGreen, tintBlue, shade);
         instance.safeGetUniform("FadeParams").set(fadeEnd * 0.6f, fadeEnd);
 
+        if (blockLight == null) blockLight = new BlockLightTexture();
+
+        boolean hasBlockLight = false;
+        int dynCount;
+        if (config.affectedByLights) {
+            blockLight.update(level, cameraView);
+            hasBlockLight = blockLight.hasAnyLight();
+
+            List<LambDynamicLightsCompat.LightSource> dynamicLights = LambDynamicLightsCompat.getDynamicLights(
+                    camera.x - 64.0, camera.y - 64.0, camera.z - 64.0,
+                    camera.x + 64.0, camera.y + 64.0, camera.z + 64.0
+            );
+
+            if (dynamicLights.isEmpty() && !LambDynamicLightsCompat.isLoaded() && minecraft.player != null) {
+                int lum = minecraft.player.isOnFire() ? 15 : Math.max(
+                        getHeldLuminance(minecraft.player.getMainHandItem()),
+                        getHeldLuminance(minecraft.player.getOffhandItem())
+                );
+                if (lum > 0) {
+                    Vec3 pPos = minecraft.player.position();
+                    dynamicLights = List.of(new LambDynamicLightsCompat.LightSource(pPos.x, pPos.y + 1.0, pPos.z, lum));
+                }
+            }
+
+            dynCount = Math.min(4, dynamicLights.size());
+            instance.safeGetUniform("DynamicLightCount").set(dynCount);
+            if (dynCount > 0) {
+                var l0 = dynamicLights.getFirst();
+                instance.safeGetUniform("DynamicLight0").set((float) l0.x(), (float) l0.y(), (float) l0.z(), (float) l0.luminance());
+            }
+            if (dynCount > 1) {
+                var l1 = dynamicLights.get(1);
+                instance.safeGetUniform("DynamicLight1").set((float) l1.x(), (float) l1.y(), (float) l1.z(), (float) l1.luminance());
+            }
+            if (dynCount > 2) {
+                var l2 = dynamicLights.get(2);
+                instance.safeGetUniform("DynamicLight2").set((float) l2.x(), (float) l2.y(), (float) l2.z(), (float) l2.luminance());
+            }
+            if (dynCount > 3) {
+                var l3 = dynamicLights.get(3);
+                instance.safeGetUniform("DynamicLight3").set((float) l3.x(), (float) l3.y(), (float) l3.z(), (float) l3.luminance());
+            }
+        } else {
+            instance.safeGetUniform("DynamicLightCount").set(0);
+        }
+
+        instance.setSampler("BlockLightSampler", blockLight.textureId());
+        instance.safeGetUniform("HasBlockLight").set(hasBlockLight ? 1 : 0);
+        instance.safeGetUniform("SurfaceLightBounds").set(
+                (float) blockLight.originX(),
+                (float) blockLight.originZ(),
+                (float) BlockLightTexture.SIZE,
+                (float) BlockLightTexture.SIZE);
+
         RenderSystem.setShader(() -> instance);
         RenderSystem.enableBlend();
         RenderSystem.blendFuncSeparate(
@@ -232,6 +290,10 @@ public final class CloudShadowRenderer {
         if (coverage != null) {
             coverage.close();
             coverage = null;
+        }
+        if (blockLight != null) {
+            blockLight.close();
+            blockLight = null;
         }
     }
 
@@ -271,5 +333,13 @@ public final class CloudShadowRenderer {
     private static float smoothstep(float edge0, float edge1, float value) {
         float t = Mth.clamp((value - edge0) / (edge1 - edge0), 0f, 1f);
         return t * t * (3f - 2f * t);
+    }
+
+    private static int getHeldLuminance(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return 0;
+        if (stack.getItem() instanceof BlockItem blockItem) {
+            return blockItem.getBlock().defaultBlockState().getLightEmission();
+        }
+        return 0;
     }
 }

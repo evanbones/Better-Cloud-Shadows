@@ -37,7 +37,13 @@ neoForge {
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
+def mappingsAttribute = Attribute.of('net.minecraft.mappings', String)
+
 dependencies {
+    attributesSchema {
+        attribute(mappingsAttribute)
+    }
+
     // Better Clouds
     compileOnly "maven.modrinth:better-clouds:${better_clouds_neoforge_id}"
     //runtimeOnly "maven.modrinth:better-clouds:${better_clouds_neoforge_id}"
@@ -53,29 +59,47 @@ dependencies {
 
     // Cloud Tweaks
     compileOnly "maven.modrinth:cloud_tweaks:${cloud_tweaks_neoforge_id}"
-    runtimeOnly "maven.modrinth:cloud_tweaks:${cloud_tweaks_neoforge_id}"
+    //runtimeOnly "maven.modrinth:cloud_tweaks:${cloud_tweaks_neoforge_id}"
 
     // Distant Horizons
     compileOnly "maven.modrinth:distanthorizons:${distant_horizons_id}"
     //runtimeOnly "maven.modrinth:distanthorizons:${distant_horizons_id}"
 
+    // LambDynamicLights
+    compileOnly("dev.lambdaurora.lambdynamiclights:lambdynamiclights-api:${lambdynamiclights_version}") {
+        transitive = false
+        attributes {
+            attribute(mappingsAttribute, 'mojmap')
+        }
+    }
+    compileOnly("dev.lambdaurora.lambdynamiclights:lambdynamiclights-runtime:${lambdynamiclights_version}") {
+        transitive = false
+        attributes {
+            attribute(mappingsAttribute, 'mojmap')
+        }
+    }
+    compileOnly("dev.lambdaurora:spruceui:${spruceui_version}") {
+        transitive = false
+        attributes {
+            attribute(mappingsAttribute, 'mojmap')
+        }
+    }
+    compileOnly("dev.yumi.mc.core:yumi-mc-foundation:${yumi_mc_version}") {
+        transitive = false
+        attributes {
+            attribute(mappingsAttribute, 'mojmap')
+        }
+    }
+
     // YACL
-    compileOnly "maven.modrinth:yacl:${yacl_version}-neoforge"
-    runtimeOnly "maven.modrinth:yacl:${yacl_version}-neoforge"
+    compileOnly "dev.isxander:yet-another-config-lib:${yacl_version}-neoforge"
+    runtimeOnly "dev.isxander:yet-another-config-lib:${yacl_version}-neoforge"
 
     compileOnly "com.moulberry:mixinconstraints:${mixin_constraints_version}"
     jarJar(implementation("com.moulberry:mixinconstraints")) {
         version {
             strictly "[${mixin_constraints_version},)"
             prefer "${mixin_constraints_version}"
-        }
-    }
-
-    compileOnly annotationProcessor("com.github.bawnorton.mixinsquared:mixinsquared-common:${mixin_squared_version}")
-    jarJar(implementation("com.github.bawnorton.mixinsquared:mixinsquared-neoforge")) {
-        version {
-            strictly "[${mixin_squared_version},)"
-            prefer "${mixin_squared_version}"
         }
     }
 }

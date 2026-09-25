@@ -70,8 +70,18 @@ repositories {
     }
 
     maven {
-        name = "MixinSquared"
-        url = "https://maven.bawnorton.com/releases"
+        name = "Xander"
+        url = "https://maven.isxander.dev/releases"
+    }
+
+    maven {
+        name = 'Gegy'
+        url = uri('https://maven.gegy.dev')
+    }
+
+    maven {
+        name = "Kotlin for Forge"
+        url = "https://thedarkcolour.github.io/KotlinForForge/"
     }
 }
 

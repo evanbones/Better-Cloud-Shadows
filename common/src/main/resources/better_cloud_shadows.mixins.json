@@ -10,7 +10,8 @@
     "LevelRendererAccessor",
     "betterclouds.ChunkedGeneratorAccessor",
     "cloudtweaks.CustomCloudRendererAccessor",
-    "distanthorizons.RenderableBoxGroupMixin"
+    "distanthorizons.RenderableBoxGroupMixin",
+    "lambdynlights.LambDynLightsAccessor"
   ],
   "server": [],
   "injectors": {
