@@ -1,3 +1,3 @@
-### Added
+### Fixed
 
-- Block light now affects cloud shadows (including LambDynLights support).
+- Fixed Void Water incompatibility.

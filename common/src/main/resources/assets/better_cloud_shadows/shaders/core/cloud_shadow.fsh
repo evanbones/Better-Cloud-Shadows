@@ -23,6 +23,7 @@ uniform vec4 CoverageOrigin2;
 uniform vec4 CoverageOrigin3;
 uniform vec4 ShadowColor;
 uniform vec2 FadeParams;
+uniform float MinWorldY;
 uniform float FogStart;
 uniform float FogEnd;
 uniform vec4 FogColor;
@@ -118,6 +119,8 @@ void main() {
     }
 
     vec3 world = relative + CameraPos;
+
+    if (world.y < MinWorldY + 0.002) discard;
 
     if (insideLayer(world.y, CloudHeights.x, CloudThickness.x)) discard;
     if (LayerCount > 1 && insideLayer(world.y, CloudHeights.y, CloudThickness.y)) discard;

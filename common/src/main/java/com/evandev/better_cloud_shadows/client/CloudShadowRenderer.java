@@ -202,6 +202,7 @@ public final class CloudShadowRenderer {
         }
         instance.safeGetUniform("ShadowColor").set(tintRed, tintGreen, tintBlue, shade);
         instance.safeGetUniform("FadeParams").set(fadeEnd * 0.6f, fadeEnd);
+        instance.safeGetUniform("MinWorldY").set((float) level.getMinBuildHeight());
 
         if (blockLight == null) blockLight = new BlockLightTexture();
 
