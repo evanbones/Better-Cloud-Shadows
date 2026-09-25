@@ -1,3 +1,4 @@
 ### Fixed
 
-- Fixed Void Water incompatibility.
+- Performance improvements.
+- Prevented cloud shadows from appearing underground.

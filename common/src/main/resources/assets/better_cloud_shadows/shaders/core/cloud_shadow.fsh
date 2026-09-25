@@ -64,45 +64,46 @@ float layerCoverage(vec3 world, float height, float thickness, vec4 origin, vec4
     return dot(texture(CoverageSampler, clamp(uv, 0.0, 1.0)), channel) * edgeFade;
 }
 
-vec2 blockLightTexel(ivec2 texel, float worldY) {
-    vec4 tex = texelFetch(BlockLightSampler, clamp(texel, ivec2(0), textureSize(BlockLightSampler, 0) - 1), 0);
-    float surfaceY = (tex.g * 255.0 + tex.b * 255.0 * 256.0) - 1024.0;
-    return vec2(tex.r, 1.0 - smoothstep(4.0, 10.0, abs(worldY - surfaceY)));
-}
-
-float sampleBlockLight(vec3 world, vec3 relative) {
-    if (HasBlockLight != 1) return 0.0;
-
+vec3 sampleSurfaceInfo(vec3 world) {
     vec2 local = world.xz - SurfaceLightBounds.xy;
     vec2 uv = local / SurfaceLightBounds.zw;
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-        return 0.0;
+        return vec3(0.0, world.y, 0.0);
     }
 
     vec2 p = local - 0.5;
     ivec2 base = ivec2(floor(p));
     vec2 f = p - vec2(base);
 
-    vec2 s00 = blockLightTexel(base, world.y);
-    vec2 s10 = blockLightTexel(base + ivec2(1, 0), world.y);
-    vec2 s01 = blockLightTexel(base + ivec2(0, 1), world.y);
-    vec2 s11 = blockLightTexel(base + ivec2(1, 1), world.y);
+    ivec2 maxTexel = textureSize(BlockLightSampler, 0) - 1;
+    vec4 tex00 = texelFetch(BlockLightSampler, clamp(base, ivec2(0), maxTexel), 0);
+    vec4 tex10 = texelFetch(BlockLightSampler, clamp(base + ivec2(1, 0), ivec2(0), maxTexel), 0);
+    vec4 tex01 = texelFetch(BlockLightSampler, clamp(base + ivec2(0, 1), ivec2(0), maxTexel), 0);
+    vec4 tex11 = texelFetch(BlockLightSampler, clamp(base + ivec2(1, 1), ivec2(0), maxTexel), 0);
 
-    vec4 w = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
-    vec4 fades = vec4(s00.y, s10.y, s01.y, s11.y);
-    vec4 lights = vec4(s00.x, s10.x, s01.x, s11.x);
+    float valid = min(min(tex00.a, tex10.a), min(tex01.a, tex11.a));
+    if (valid < 0.5) {
+        return vec3(0.0, world.y, 0.0);
+    }
 
-    float maxFade = max(max(fades.x, fades.y), max(fades.z, fades.w));
-    if (maxFade <= 0.0) return 0.0;
+    float y00 = (tex00.g * 255.0 + tex00.b * 255.0 * 256.0) - 1024.0;
+    float y10 = (tex10.g * 255.0 + tex10.b * 255.0 * 256.0) - 1024.0;
+    float y01 = (tex01.g * 255.0 + tex01.b * 255.0 * 256.0) - 1024.0;
+    float y11 = (tex11.g * 255.0 + tex11.b * 255.0 * 256.0) - 1024.0;
 
-    vec4 wf = w * fades;
-    float totalWeight = dot(wf, vec4(1.0));
-    if (totalWeight <= 0.0) return 0.0;
-    float light = dot(wf, lights) / totalWeight;
+    float surfaceY = mix(mix(y00, y10, f.x), mix(y01, y11, f.x), f.y);
 
     vec2 toEdge = min(uv, 1.0 - uv) * SurfaceLightBounds.zw;
     float edgeFade = clamp(min(toEdge.x, toEdge.y) / 16.0, 0.0, 1.0);
-    return light * edgeFade * maxFade;
+
+    float blockLight = 0.0;
+    if (HasBlockLight == 1) {
+        vec4 w = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
+        vec4 lights = vec4(tex00.r, tex10.r, tex01.r, tex11.r);
+        blockLight = dot(w, lights) * edgeFade;
+    }
+
+    return vec3(blockLight, surfaceY, 1.0);
 }
 
 void main() {
@@ -127,6 +128,20 @@ void main() {
     if (LayerCount > 2 && insideLayer(world.y, CloudHeights.z, CloudThickness.z)) discard;
     if (LayerCount > 3 && insideLayer(world.y, CloudHeights.w, CloudThickness.w)) discard;
 
+    vec3 surfaceInfo = sampleSurfaceInfo(world);
+    float blockLight = surfaceInfo.x;
+    float surfaceY = surfaceInfo.y;
+    float hasSurface = surfaceInfo.z;
+
+    float surfaceFactor = 1.0;
+    if (hasSurface > 0.5) {
+        float depthBelowSurface = surfaceY - world.y;
+        if (depthBelowSurface > 4.0) {
+            surfaceFactor = 1.0 - smoothstep(4.0, 14.0, depthBelowSurface);
+            if (surfaceFactor <= 0.0) discard;
+        }
+    }
+
     float transmittance = 1.0 - layerCoverage(world, CloudHeights.x, CloudThickness.x, CoverageOrigin0, vec4(1.0, 0.0, 0.0, 0.0));
     if (LayerCount > 1) {
         transmittance *= 1.0 - layerCoverage(world, CloudHeights.y, CloudThickness.y, CoverageOrigin1, vec4(0.0, 1.0, 0.0, 0.0));
@@ -146,8 +161,6 @@ void main() {
 
     float visibility = mix(1.0, linear_fog_fade(fog_distance(relative, FogShape), FogStart, FogEnd), FogColor.a);
     if (visibility <= 0.0) discard;
-
-    float blockLight = sampleBlockLight(world, relative);
 
     if (DynamicLightCount > 0) {
         float d = length(world - DynamicLight0.xyz);
@@ -169,6 +182,6 @@ void main() {
     float lightFactor = clamp(1.0 - smoothstep(0.0, 0.85, blockLight), 0.0, 1.0);
     if (lightFactor <= 0.0) discard;
 
-    float shade = clamp(ShadowColor.a * coverage * fade * visibility * lightFactor, 0.0, 1.0);
+    float shade = clamp(ShadowColor.a * coverage * fade * visibility * lightFactor * surfaceFactor, 0.0, 1.0);
     fragColor = vec4(mix(vec3(1.0), ShadowColor.rgb, shade), 1.0);
 }

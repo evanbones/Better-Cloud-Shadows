@@ -206,11 +206,10 @@ public final class CloudShadowRenderer {
 
         if (blockLight == null) blockLight = new BlockLightTexture();
 
-        boolean hasBlockLight = false;
+        blockLight.update(level, cameraView, config.affectedByLights);
+        boolean hasBlockLight = config.affectedByLights && blockLight.hasAnyLight();
         int dynCount;
         if (config.affectedByLights) {
-            blockLight.update(level, cameraView);
-            hasBlockLight = blockLight.hasAnyLight();
 
             List<LambDynamicLightsCompat.LightSource> dynamicLights = LambDynamicLightsCompat.getDynamicLights(
                     camera.x - 64.0, camera.y - 64.0, camera.z - 64.0,
