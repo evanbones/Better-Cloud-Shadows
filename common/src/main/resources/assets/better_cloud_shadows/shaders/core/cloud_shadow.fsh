@@ -103,8 +103,14 @@ vec3 sampleSurfaceInfo(vec3 world) {
     float blockLight = 0.0;
     if (HasBlockLight == 1) {
         vec4 w = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
-        vec4 lights = vec4(tex00.r, tex10.r, tex01.r, tex11.r);
-        blockLight = dot(w, lights) * edgeFade;
+        vec4 heights = vec4(y00, y10, y01, y11);
+        vec4 lights = vec4(tex00.r, tex10.r, tex01.r, tex11.r) * 15.0;
+
+        vec4 attenuated = max(lights - max(abs(world.y - (heights + 1.5)) - 0.5, 0.0), 0.0);
+
+        vec4 open = w * step(heights + 0.5, vec4(world.y));
+        float openWeight = dot(open, vec4(1.0));
+        blockLight = (openWeight > 1e-4 ? dot(open, attenuated) / openWeight : dot(w, attenuated)) * edgeFade;
     }
 
     return vec3(blockLight, surfaceY, 1.0);
@@ -139,15 +145,15 @@ void main() {
     if (LayerCount > 3 && insideLayer(world.y, CloudHeights.w, CloudThickness.w)) discard;
 
     vec3 surfaceInfo = sampleSurfaceInfo(world);
-    float blockLight = surfaceInfo.x * 15.0;
+    float blockLight = surfaceInfo.x;
     float surfaceY = surfaceInfo.y;
     float hasSurface = surfaceInfo.z;
 
     float surfaceFactor = 1.0;
     if (hasSurface > 0.5) {
         float depthBelowSurface = surfaceY - world.y;
-        if (depthBelowSurface > 4.0) {
-            surfaceFactor = 1.0 - smoothstep(4.0, 14.0, depthBelowSurface);
+        if (depthBelowSurface > 3.0) {
+            surfaceFactor = 1.0 - smoothstep(3.0, 13.0, depthBelowSurface);
             if (surfaceFactor <= 0.0) discard;
         }
     }
@@ -171,10 +177,6 @@ void main() {
 
     float visibility = mix(1.0, linear_fog_fade(fog_distance(relative, FogShape), FogStart, FogEnd), FogColor.a);
     if (visibility <= 0.0) discard;
-
-    if (hasSurface > 0.5) {
-        blockLight -= max(abs(world.y - (surfaceY + 1.5)) - 0.5, 0.0);
-    }
 
     if (DynamicLightCount > 0) {
         float d = length(world - DynamicLight0.xyz);

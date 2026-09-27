@@ -1,4 +1,4 @@
-### Fixed
+### Changed
 
-- Adjusted shadows under leaves and other translucent blocks.
-- Performance improvements.
+- More adjustments to shadow visuals.
+- Code cleanups.

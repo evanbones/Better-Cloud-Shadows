@@ -50,7 +50,7 @@ dependencies {
 
     // Cloud Layers
     compileOnly "maven.modrinth:cloud-layers:${cloud_layers_neoforge_id}"
-    //runtimeOnly "maven.modrinth:cloud-layers:${cloud_layers_neoforge_id}"
+    runtimeOnly "maven.modrinth:cloud-layers:${cloud_layers_neoforge_id}"
     runtimeOnly "maven.modrinth:cloth-config:${cloth_config_version}+neoforge"
 
     // Cirrus

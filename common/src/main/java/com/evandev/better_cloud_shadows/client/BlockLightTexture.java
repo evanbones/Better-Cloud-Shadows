@@ -13,6 +13,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.block.SnowLayerBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -35,17 +36,16 @@ public final class BlockLightTexture implements AutoCloseable {
     public static final int SIZE = CHUNKS_SPAN * 16; // 512 blocks
 
     private static final int SLOTS = CHUNKS_SPAN * CHUNKS_SPAN;
-    private static final int MAX_BUILDS_PER_FRAME = 64;
-    private static final int MAX_PARTIAL_UPLOADS = 64;
-
     private static final int[] SCAN_ORDER = IntStream.range(0, SLOTS)
             .map(i -> (i % CHUNKS_SPAN) | (i / CHUNKS_SPAN) << 8)
             .boxed()
             .sorted(Comparator.comparingInt(BlockLightTexture::distanceSq))
             .mapToInt(Integer::intValue)
             .toArray();
-
     private static final boolean[] dirtySlots = new boolean[SLOTS];
+
+    private static final int MAX_BUILDS_PER_FRAME = 64;
+    private static final int MAX_PARTIAL_UPLOADS = 64;
     private static boolean anyDirty;
 
     private final DynamicTexture texture;
@@ -74,6 +74,16 @@ public final class BlockLightTexture implements AutoCloseable {
     public static void markDirty(int secX, int secZ) {
         dirtySlots[slot(secX, secZ)] = true;
         anyDirty = true;
+    }
+
+    private static int slot(int secX, int secZ) {
+        return (secZ & (CHUNKS_SPAN - 1)) * CHUNKS_SPAN + (secX & (CHUNKS_SPAN - 1));
+    }
+
+    private static int distanceSq(int packed) {
+        int dx = (packed & 0xFF) - CHUNKS_RADIUS;
+        int dz = (packed >> 8) - CHUNKS_RADIUS;
+        return dx * dx + dz * dz;
     }
 
     public int textureId() {
@@ -218,12 +228,15 @@ public final class BlockLightTexture implements AutoCloseable {
 
     private int shadowSurfaceY(ChunkAccess chunk, int lx, int lz) {
         int minY = chunk.getMinBuildHeight();
-        int y = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING, lx, lz);
+        int y = Math.min(chunk.getHeight(Heightmap.Types.MOTION_BLOCKING, lx, lz), chunk.getMaxBuildHeight() - 1);
+
         boolean sawLeaves = false;
+        int logTop = Integer.MIN_VALUE;
 
         while (y >= minY) {
             LevelChunkSection section = chunk.getSection(chunk.getSectionIndex(y));
             if (section.hasOnlyAir()) {
+                logTop = Integer.MIN_VALUE;
                 y = (y & ~15) - 1;
                 continue;
             }
@@ -232,14 +245,21 @@ public final class BlockLightTexture implements AutoCloseable {
             Block block = state.getBlock();
             if (block instanceof LeavesBlock || state.is(BlockTags.LEAVES)) {
                 sawLeaves = true;
+                logTop = Integer.MIN_VALUE;
+            } else if (sawLeaves && (state.is(BlockTags.LOGS) || state.is(Blocks.BEE_NEST))) {
+                // branches under a canopy are skipped so the ground beneath them isn't considered underground
+                if (logTop == Integer.MIN_VALUE) logTop = y;
             } else if (!(block instanceof SnowLayerBlock)
                     && (state.blocksMotion() || !state.getFluidState().isEmpty())) {
                 break;
+            } else {
+                logTop = Integer.MIN_VALUE;
             }
             y--;
         }
 
-        return sawLeaves ? Math.max(y, minY) : chunk.getHeight(Heightmap.Types.WORLD_SURFACE, lx, lz);
+        if (logTop != Integer.MIN_VALUE && y >= minY) return logTop;
+        return Math.max(y, minY);
     }
 
     private void setSlotHasLight(int slot, boolean hasLight) {
@@ -247,16 +267,6 @@ public final class BlockLightTexture implements AutoCloseable {
             slotHasLight[slot] = hasLight;
             litSlots += hasLight ? 1 : -1;
         }
-    }
-
-    private static int slot(int secX, int secZ) {
-        return (secZ & (CHUNKS_SPAN - 1)) * CHUNKS_SPAN + (secX & (CHUNKS_SPAN - 1));
-    }
-
-    private static int distanceSq(int packed) {
-        int dx = (packed & 0xFF) - CHUNKS_RADIUS;
-        int dz = (packed >> 8) - CHUNKS_RADIUS;
-        return dx * dx + dz * dz;
     }
 
     @Override
