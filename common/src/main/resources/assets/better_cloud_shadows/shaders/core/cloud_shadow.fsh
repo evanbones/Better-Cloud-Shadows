@@ -29,7 +29,7 @@ uniform float FogEnd;
 uniform vec4 FogColor;
 uniform int FogShape;
 uniform int HasBlockLight;
-uniform vec4 SurfaceLightBounds;
+uniform vec4 SurfaceLightOrigin;
 uniform int DynamicLightCount;
 uniform vec4 DynamicLight0;
 uniform vec4 DynamicLight1;
@@ -65,9 +65,9 @@ float layerCoverage(vec3 world, float height, float thickness, vec4 origin, vec4
 }
 
 vec3 sampleSurfaceInfo(vec3 world) {
-    vec2 local = world.xz - SurfaceLightBounds.xy;
-    vec2 uv = local / SurfaceLightBounds.zw;
-    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+    ivec2 size = textureSize(BlockLightSampler, 0);
+    vec2 local = world.xz - SurfaceLightOrigin.xy;
+    if (local.x < 0.0 || local.y < 0.0 || local.x > float(size.x) || local.y > float(size.y)) {
         return vec3(0.0, world.y, 0.0);
     }
 
@@ -75,11 +75,15 @@ vec3 sampleSurfaceInfo(vec3 world) {
     ivec2 base = ivec2(floor(p));
     vec2 f = p - vec2(base);
 
-    ivec2 maxTexel = textureSize(BlockLightSampler, 0) - 1;
-    vec4 tex00 = texelFetch(BlockLightSampler, clamp(base, ivec2(0), maxTexel), 0);
-    vec4 tex10 = texelFetch(BlockLightSampler, clamp(base + ivec2(1, 0), ivec2(0), maxTexel), 0);
-    vec4 tex01 = texelFetch(BlockLightSampler, clamp(base + ivec2(0, 1), ivec2(0), maxTexel), 0);
-    vec4 tex11 = texelFetch(BlockLightSampler, clamp(base + ivec2(1, 1), ivec2(0), maxTexel), 0);
+    ivec2 lo = clamp(base, ivec2(0), size - 1);
+    ivec2 hi = clamp(base + 1, ivec2(0), size - 1);
+    ivec2 wrap = ivec2(SurfaceLightOrigin.zw);
+    lo = (lo + wrap) & (size - 1);
+    hi = (hi + wrap) & (size - 1);
+    vec4 tex00 = texelFetch(BlockLightSampler, lo, 0);
+    vec4 tex10 = texelFetch(BlockLightSampler, ivec2(hi.x, lo.y), 0);
+    vec4 tex01 = texelFetch(BlockLightSampler, ivec2(lo.x, hi.y), 0);
+    vec4 tex11 = texelFetch(BlockLightSampler, hi, 0);
 
     float valid = min(min(tex00.a, tex10.a), min(tex01.a, tex11.a));
     if (valid < 0.5) {
@@ -93,7 +97,7 @@ vec3 sampleSurfaceInfo(vec3 world) {
 
     float surfaceY = mix(mix(y00, y10, f.x), mix(y01, y11, f.x), f.y);
 
-    vec2 toEdge = min(uv, 1.0 - uv) * SurfaceLightBounds.zw;
+    vec2 toEdge = min(local, vec2(size) - local);
     float edgeFade = clamp(min(toEdge.x, toEdge.y) / 16.0, 0.0, 1.0);
 
     float blockLight = 0.0;
@@ -104,6 +108,12 @@ vec3 sampleSurfaceInfo(vec3 world) {
     }
 
     return vec3(blockLight, surfaceY, 1.0);
+}
+
+vec3 blockLightColor(float level) {
+    float f = clamp(level / 15.0, 0.0, 1.0);
+    float r = f / (4.0 - 3.0 * f) * 1.5;
+    return vec3(r, r * ((r * 0.6 + 0.4) * 0.6 + 0.4), r * (r * r * 0.6 + 0.4));
 }
 
 void main() {
@@ -129,7 +139,7 @@ void main() {
     if (LayerCount > 3 && insideLayer(world.y, CloudHeights.w, CloudThickness.w)) discard;
 
     vec3 surfaceInfo = sampleSurfaceInfo(world);
-    float blockLight = surfaceInfo.x;
+    float blockLight = surfaceInfo.x * 15.0;
     float surfaceY = surfaceInfo.y;
     float hasSurface = surfaceInfo.z;
 
@@ -162,26 +172,32 @@ void main() {
     float visibility = mix(1.0, linear_fog_fade(fog_distance(relative, FogShape), FogStart, FogEnd), FogColor.a);
     if (visibility <= 0.0) discard;
 
+    if (hasSurface > 0.5) {
+        blockLight -= max(abs(world.y - (surfaceY + 1.5)) - 0.5, 0.0);
+    }
+
     if (DynamicLightCount > 0) {
         float d = length(world - DynamicLight0.xyz);
-        if (d < 7.75) blockLight = max(blockLight, (1.0 - d / 7.75) * (DynamicLight0.w / 15.0));
+        if (d < 7.75) blockLight = max(blockLight, (1.0 - d / 7.75) * DynamicLight0.w);
     }
     if (DynamicLightCount > 1) {
         float d = length(world - DynamicLight1.xyz);
-        if (d < 7.75) blockLight = max(blockLight, (1.0 - d / 7.75) * (DynamicLight1.w / 15.0));
+        if (d < 7.75) blockLight = max(blockLight, (1.0 - d / 7.75) * DynamicLight1.w);
     }
     if (DynamicLightCount > 2) {
         float d = length(world - DynamicLight2.xyz);
-        if (d < 7.75) blockLight = max(blockLight, (1.0 - d / 7.75) * (DynamicLight2.w / 15.0));
+        if (d < 7.75) blockLight = max(blockLight, (1.0 - d / 7.75) * DynamicLight2.w);
     }
     if (DynamicLightCount > 3) {
         float d = length(world - DynamicLight3.xyz);
-        if (d < 7.75) blockLight = max(blockLight, (1.0 - d / 7.75) * (DynamicLight3.w / 15.0));
+        if (d < 7.75) blockLight = max(blockLight, (1.0 - d / 7.75) * DynamicLight3.w);
     }
 
-    float lightFactor = clamp(1.0 - smoothstep(0.0, 0.85, blockLight), 0.0, 1.0);
-    if (lightFactor <= 0.0) discard;
-
-    float shade = clamp(ShadowColor.a * coverage * fade * visibility * lightFactor * surfaceFactor, 0.0, 1.0);
-    fragColor = vec4(mix(vec3(1.0), ShadowColor.rgb, shade), 1.0);
+    float shade = clamp(ShadowColor.a * coverage * fade * visibility * surfaceFactor, 0.0, 1.0);
+    vec3 shadowed = mix(vec3(1.0), ShadowColor.rgb, shade);
+    if (blockLight > 0.0) {
+        shadowed = min(shadowed + blockLightColor(blockLight), vec3(1.0));
+        if (all(greaterThanEqual(shadowed, vec3(1.0)))) discard;
+    }
+    fragColor = vec4(shadowed, 1.0);
 }

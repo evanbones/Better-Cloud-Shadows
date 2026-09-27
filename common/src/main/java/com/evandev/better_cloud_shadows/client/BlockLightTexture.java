@@ -8,14 +8,25 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.util.Mth;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.LeavesBlock;
+import net.minecraft.world.level.block.SnowLayerBlock;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.DataLayer;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.lighting.LayerLightEventListener;
 import net.minecraft.world.phys.Vec3;
+
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.stream.IntStream;
 
 public final class BlockLightTexture implements AutoCloseable {
 
@@ -23,22 +34,46 @@ public final class BlockLightTexture implements AutoCloseable {
     public static final int CHUNKS_SPAN = CHUNKS_RADIUS * 2; // 32 chunks
     public static final int SIZE = CHUNKS_SPAN * 16; // 512 blocks
 
+    private static final int SLOTS = CHUNKS_SPAN * CHUNKS_SPAN;
+    private static final int MAX_BUILDS_PER_FRAME = 64;
+    private static final int MAX_PARTIAL_UPLOADS = 64;
+
+    private static final int[] SCAN_ORDER = IntStream.range(0, SLOTS)
+            .map(i -> (i % CHUNKS_SPAN) | (i / CHUNKS_SPAN) << 8)
+            .boxed()
+            .sorted(Comparator.comparingInt(BlockLightTexture::distanceSq))
+            .mapToInt(Integer::intValue)
+            .toArray();
+
+    private static final boolean[] dirtySlots = new boolean[SLOTS];
+    private static boolean anyDirty;
+
     private final DynamicTexture texture;
     private final BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
 
+    private final long[] slotPos = new long[SLOTS];
+    private final LevelChunk[] slotChunk = new LevelChunk[SLOTS];
+    private final boolean[] slotHasLight = new boolean[SLOTS];
+    private final int[] changedSlots = new int[SLOTS];
+    private int litSlots;
+
     private int originX;
     private int originZ;
-    private int lastMinSecX = Integer.MIN_VALUE;
-    private int lastMinSecZ = Integer.MIN_VALUE;
-    private boolean lastAffectedByLights;
+    private int lastCamSecX = Integer.MIN_VALUE;
+    private int lastCamSecZ = Integer.MIN_VALUE;
+    private int lastChunkRadius = -1;
     private int lastLoadedChunks = -1;
-    private long lastSignature;
-    private long lastCheckGameTime = -1;
-    private boolean hasAnyLight;
-    private boolean populated;
+    private boolean lastAffectedByLights;
+    private boolean pending = true;
 
     public BlockLightTexture() {
         this.texture = new DynamicTexture(SIZE, SIZE, false);
+        Arrays.fill(slotPos, ChunkPos.INVALID_CHUNK_POS);
+    }
+
+    public static void markDirty(int secX, int secZ) {
+        dirtySlots[slot(secX, secZ)] = true;
+        anyDirty = true;
     }
 
     public int textureId() {
@@ -54,148 +89,174 @@ public final class BlockLightTexture implements AutoCloseable {
     }
 
     public boolean hasAnyLight() {
-        return hasAnyLight;
+        return litSlots > 0;
     }
 
     public void update(ClientLevel level, Camera camera, boolean affectedByLights) {
         Vec3 camPos = camera.getPosition();
         int camSecX = Mth.floor(camPos.x) >> 4;
         int camSecZ = Mth.floor(camPos.z) >> 4;
-
-        int minSecX = camSecX - CHUNKS_RADIUS;
-        int minSecZ = camSecZ - CHUNKS_RADIUS;
-
-        boolean moved = (minSecX != lastMinSecX || minSecZ != lastMinSecZ);
-        boolean modeChanged = (affectedByLights != lastAffectedByLights);
+        int chunkRadius = Math.min(CHUNKS_RADIUS, Minecraft.getInstance().options.getEffectiveRenderDistance() + 1);
         int loadedChunks = level.getChunkSource().getLoadedChunksCount();
-        long gameTime = level.getGameTime();
+
+        if (affectedByLights != lastAffectedByLights) {
+            Arrays.fill(slotPos, ChunkPos.INVALID_CHUNK_POS);
+            lastAffectedByLights = affectedByLights;
+        } else if (!pending && !anyDirty && camSecX == lastCamSecX && camSecZ == lastCamSecZ
+                && chunkRadius == lastChunkRadius && loadedChunks == lastLoadedChunks) {
+            return;
+        }
+
+        NativeImage pixels = texture.getPixels();
+        if (pixels == null) return;
+
+        lastCamSecX = camSecX;
+        lastCamSecZ = camSecZ;
+        lastChunkRadius = chunkRadius;
+        lastLoadedChunks = loadedChunks;
+        originX = (camSecX - CHUNKS_RADIUS) << 4;
+        originZ = (camSecZ - CHUNKS_RADIUS) << 4;
+        anyDirty = false;
+        pending = false;
 
         LayerLightEventListener blockListener = affectedByLights
                 ? level.getLightEngine().getLayerListener(LightLayer.BLOCK)
                 : null;
 
-        if (populated && !moved && !modeChanged && loadedChunks == lastLoadedChunks) {
-            if (!affectedByLights || gameTime - lastCheckGameTime < 10) {
-                return;
+        int builds = 0;
+        int changed = 0;
+        for (int packed : SCAN_ORDER) {
+            int dx = (packed & 0xFF) - CHUNKS_RADIUS;
+            int dz = (packed >> 8) - CHUNKS_RADIUS;
+            int secX = camSecX + dx;
+            int secZ = camSecZ + dz;
+            int slot = slot(secX, secZ);
+            long pos = ChunkPos.asLong(secX, secZ);
+
+            LevelChunk chunk = Math.abs(dx) <= chunkRadius && Math.abs(dz) <= chunkRadius
+                    ? level.getChunkSource().getChunk(secX, secZ, false)
+                    : null;
+
+            boolean sameChunk = slotPos[slot] == pos;
+            if (sameChunk && slotChunk[slot] == chunk && !dirtySlots[slot]) continue;
+
+            if (chunk != null && builds >= MAX_BUILDS_PER_FRAME) {
+                pending = true;
+                if (sameChunk) continue;
+                chunk = null;
             }
-            long checkSig = computeLightSignature(level, blockListener, camSecX, camSecZ);
-            if (checkSig == lastSignature) {
-                return;
-            }
-        }
-        lastCheckGameTime = gameTime;
 
-        NativeImage pixels = texture.getPixels();
-        if (pixels == null) return;
-
-        hasAnyLight = false;
-
-        int renderDist = Minecraft.getInstance().options.getEffectiveRenderDistance();
-        int chunkRadius = Math.min(CHUNKS_RADIUS, renderDist + 1);
-
-        for (int dz = 0; dz < CHUNKS_SPAN; dz++) {
-            int secZ = minSecZ + dz;
-            int basePixelY = dz << 4;
-            int distZ = Math.abs(secZ - camSecZ);
-
-            for (int dx = 0; dx < CHUNKS_SPAN; dx++) {
-                int secX = minSecX + dx;
-                int basePixelX = dx << 4;
-                int distX = Math.abs(secX - camSecX);
-
-                if (distX > chunkRadius || distZ > chunkRadius) {
-                    pixels.fillRect(basePixelX, basePixelY, 16, 16, 0);
-                    continue;
-                }
-
-                ChunkAccess chunk = level.getChunk(secX, secZ, ChunkStatus.FULL, false);
-                if (chunk == null) {
-                    pixels.fillRect(basePixelX, basePixelY, 16, 16, 0);
-                    continue;
-                }
-
-                boolean chunkHasBlockLight = false;
-                if (affectedByLights && blockListener != null) {
-                    int minSec = chunk.getMinSection();
-                    int maxSec = chunk.getMaxSection();
-                    for (int sy = minSec; sy < maxSec; sy++) {
-                        DataLayer dl = blockListener.getDataLayerData(SectionPos.of(secX, sy, secZ));
-                        if (dl != null && !dl.isEmpty()) {
-                            chunkHasBlockLight = true;
-                            break;
-                        }
-                    }
-                }
-
-                int blockBaseX = secX << 4;
-                int blockBaseZ = secZ << 4;
-
-                for (int lz = 0; lz < 16; lz++) {
-                    int worldZ = blockBaseZ + lz;
-                    int pixelY = basePixelY + lz;
-
-                    for (int lx = 0; lx < 16; lx++) {
-                        int worldX = blockBaseX + lx;
-                        int pixelX = basePixelX + lx;
-
-                        int surfaceY = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, lx, lz);
-
-                        int light = 0;
-                        if (chunkHasBlockLight) {
-                            mutablePos.set(worldX, surfaceY + 1, worldZ);
-                            light = blockListener.getLightValue(mutablePos);
-                            if (light < 15) {
-                                mutablePos.set(worldX, surfaceY, worldZ);
-                                int surfaceLight = blockListener.getLightValue(mutablePos);
-                                if (surfaceLight > light) light = surfaceLight;
-                            }
-                            if (light > 0) hasAnyLight = true;
-                        }
-
-                        int encodedY = Mth.clamp(surfaceY + 1024, 0, 65535);
-                        int r = light * 17;
-                        int g = encodedY & 255;
-                        int b = (encodedY >> 8) & 255;
-                        pixels.setPixelRGBA(pixelX, pixelY, (255 << 24) | (b << 16) | (g << 8) | r);
-                    }
-                }
-            }
+            if (chunk != null) builds++;
+            dirtySlots[slot] = false;
+            slotPos[slot] = pos;
+            slotChunk[slot] = chunk;
+            setSlotHasLight(slot, writeChunk(pixels, chunk, secX, secZ, blockListener));
+            changedSlots[changed++] = slot;
         }
 
-        lastSignature = affectedByLights ? computeLightSignature(level, blockListener, camSecX, camSecZ) : 0L;
-        lastMinSecX = minSecX;
-        lastMinSecZ = minSecZ;
-        lastAffectedByLights = affectedByLights;
-        lastLoadedChunks = loadedChunks;
-        originX = minSecX << 4;
-        originZ = minSecZ << 4;
-        populated = true;
+        if (changed == 0) return;
 
         RenderSystem.assertOnRenderThread();
-        texture.upload();
+        if (changed > MAX_PARTIAL_UPLOADS) {
+            texture.upload();
+        } else {
+            texture.bind();
+            for (int i = 0; i < changed; i++) {
+                int x = (changedSlots[i] % CHUNKS_SPAN) << 4;
+                int y = (changedSlots[i] / CHUNKS_SPAN) << 4;
+                pixels.upload(0, x, y, x, y, 16, 16, false, false);
+            }
+        }
     }
 
-    private long computeLightSignature(ClientLevel level, LayerLightEventListener blockListener, int camSecX, int camSecZ) {
-        if (blockListener == null) return 0L;
-        long sig = 1L;
-        for (int dz = -4; dz <= 4; dz++) {
-            int secZ = camSecZ + dz;
-            for (int dx = -4; dx <= 4; dx++) {
-                int secX = camSecX + dx;
-                ChunkAccess chunk = level.getChunk(secX, secZ, ChunkStatus.FULL, false);
-                if (chunk == null) continue;
-                int minSec = chunk.getMinSection();
-                int maxSec = chunk.getMaxSection();
-                for (int sy = minSec; sy < maxSec; sy++) {
-                    DataLayer dl = blockListener.getDataLayerData(SectionPos.of(secX, sy, secZ));
-                    if (dl != null && !dl.isEmpty()) {
-                        sig = sig * 31 + System.identityHashCode(dl);
-                        sig = sig * 31 + sy;
-                    }
+    private boolean writeChunk(NativeImage pixels, LevelChunk chunk, int secX, int secZ, LayerLightEventListener blockListener) {
+        int pixelBaseX = (secX & (CHUNKS_SPAN - 1)) << 4;
+        int pixelBaseY = (secZ & (CHUNKS_SPAN - 1)) << 4;
+        if (chunk == null) {
+            pixels.fillRect(pixelBaseX, pixelBaseY, 16, 16, 0);
+            return false;
+        }
+
+        boolean chunkHasBlockLight = false;
+        if (blockListener != null) {
+            for (int sy = chunk.getMinSection(); sy < chunk.getMaxSection(); sy++) {
+                DataLayer dl = blockListener.getDataLayerData(SectionPos.of(secX, sy, secZ));
+                if (dl != null && !dl.isEmpty()) {
+                    chunkHasBlockLight = true;
+                    break;
                 }
             }
         }
-        return sig;
+
+        boolean hasLight = false;
+        int blockBaseX = secX << 4;
+        int blockBaseZ = secZ << 4;
+        for (int lz = 0; lz < 16; lz++) {
+            for (int lx = 0; lx < 16; lx++) {
+                int surfaceY = shadowSurfaceY(chunk, lx, lz);
+
+                int light = 0;
+                if (chunkHasBlockLight) {
+                    mutablePos.set(blockBaseX + lx, surfaceY + 1, blockBaseZ + lz);
+                    light = blockListener.getLightValue(mutablePos);
+                    if (light < 15) {
+                        mutablePos.setY(surfaceY);
+                        light = Math.max(light, blockListener.getLightValue(mutablePos));
+                    }
+                    if (light > 0) hasLight = true;
+                }
+
+                int encodedY = Mth.clamp(surfaceY + 1024, 0, 65535);
+                int r = light * 17;
+                int g = encodedY & 255;
+                int b = (encodedY >> 8) & 255;
+                pixels.setPixelRGBA(pixelBaseX + lx, pixelBaseY + lz, (255 << 24) | (b << 16) | (g << 8) | r);
+            }
+        }
+        return hasLight;
+    }
+
+    private int shadowSurfaceY(ChunkAccess chunk, int lx, int lz) {
+        int minY = chunk.getMinBuildHeight();
+        int y = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING, lx, lz);
+        boolean sawLeaves = false;
+
+        while (y >= minY) {
+            LevelChunkSection section = chunk.getSection(chunk.getSectionIndex(y));
+            if (section.hasOnlyAir()) {
+                y = (y & ~15) - 1;
+                continue;
+            }
+
+            BlockState state = section.getBlockState(lx, y & 15, lz);
+            Block block = state.getBlock();
+            if (block instanceof LeavesBlock || state.is(BlockTags.LEAVES)) {
+                sawLeaves = true;
+            } else if (!(block instanceof SnowLayerBlock)
+                    && (state.blocksMotion() || !state.getFluidState().isEmpty())) {
+                break;
+            }
+            y--;
+        }
+
+        return sawLeaves ? Math.max(y, minY) : chunk.getHeight(Heightmap.Types.WORLD_SURFACE, lx, lz);
+    }
+
+    private void setSlotHasLight(int slot, boolean hasLight) {
+        if (slotHasLight[slot] != hasLight) {
+            slotHasLight[slot] = hasLight;
+            litSlots += hasLight ? 1 : -1;
+        }
+    }
+
+    private static int slot(int secX, int secZ) {
+        return (secZ & (CHUNKS_SPAN - 1)) * CHUNKS_SPAN + (secX & (CHUNKS_SPAN - 1));
+    }
+
+    private static int distanceSq(int packed) {
+        int dx = (packed & 0xFF) - CHUNKS_RADIUS;
+        int dz = (packed >> 8) - CHUNKS_RADIUS;
+        return dx * dx + dz * dz;
     }
 
     @Override

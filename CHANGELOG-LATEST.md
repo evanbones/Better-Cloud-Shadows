@@ -1,4 +1,4 @@
 ### Fixed
 
+- Adjusted shadows under leaves and other translucent blocks.
 - Performance improvements.
-- Prevented cloud shadows from appearing underground.
