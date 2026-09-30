@@ -46,15 +46,38 @@ public final class BlockLightTexture implements AutoCloseable {
 
     private static final int MAX_BUILDS_PER_FRAME = 64;
     private static final int MAX_PARTIAL_UPLOADS = 64;
+    private static final int[] SKY_STEPS = {2, 4, 6, 8};
+    private static final int MAX_SKY_DISTANCE = SKY_STEPS[SKY_STEPS.length - 1];
+    private static final int[] DIAMOND = IntStream.rangeClosed(-MAX_SKY_DISTANCE, MAX_SKY_DISTANCE)
+            .flatMap(dz -> IntStream.rangeClosed(-MAX_SKY_DISTANCE, MAX_SKY_DISTANCE)
+                    .map(dx -> (dx + 128) | (dz + 128) << 8))
+            .filter(packed -> diamondDistance(packed) <= MAX_SKY_DISTANCE)
+            .boxed()
+            .sorted(Comparator.comparingInt(BlockLightTexture::diamondDistance))
+            .mapToInt(Integer::intValue)
+            .toArray();
+    private static final int[] DIAMOND_X = Arrays.stream(DIAMOND).map(packed -> (packed & 0xFF) - 128).toArray();
+    private static final int[] DIAMOND_Z = Arrays.stream(DIAMOND).map(packed -> (packed >> 8) - 128).toArray();
+    private static final int[] DIAMOND_DISTANCE = Arrays.stream(DIAMOND).map(BlockLightTexture::diamondDistance).toArray();
+    private static final int[] SKY_STEP_END = Arrays.stream(SKY_STEPS)
+            .map(step -> (int) Arrays.stream(DIAMOND_DISTANCE).filter(distance -> distance <= step).count())
+            .toArray();
+    private static final int NO_SURFACE = Integer.MAX_VALUE;
+    private static final long SKY_BUDGET_NS = 1_000_000L;
     private static boolean anyDirty;
-
     private final DynamicTexture texture;
+    private final DynamicTexture skyDistanceTexture;
+    private final int[] surfaceHeights = new int[SIZE * SIZE];
+    private final boolean[] skyDirtySlots = new boolean[SLOTS];
+    private final int[] skyTiles = new int[SLOTS];
+    private final int[] skyStepMins = new int[SKY_STEPS.length];
     private final BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
-
     private final long[] slotPos = new long[SLOTS];
     private final LevelChunk[] slotChunk = new LevelChunk[SLOTS];
     private final boolean[] slotHasLight = new boolean[SLOTS];
     private final int[] changedSlots = new int[SLOTS];
+    private int skyDirtyCount;
+    private boolean heightsChanged;
     private int litSlots;
 
     private int originX;
@@ -68,7 +91,13 @@ public final class BlockLightTexture implements AutoCloseable {
 
     public BlockLightTexture() {
         this.texture = new DynamicTexture(SIZE, SIZE, false);
+        this.skyDistanceTexture = new DynamicTexture(SIZE, SIZE, false);
         Arrays.fill(slotPos, ChunkPos.INVALID_CHUNK_POS);
+        Arrays.fill(surfaceHeights, NO_SURFACE);
+    }
+
+    private static int diamondDistance(int packed) {
+        return Math.abs((packed & 0xFF) - 128) + Math.abs((packed >> 8) - 128);
     }
 
     public static void markDirty(int secX, int secZ) {
@@ -88,6 +117,10 @@ public final class BlockLightTexture implements AutoCloseable {
 
     public int textureId() {
         return texture.getId();
+    }
+
+    public int skyDistanceTextureId() {
+        return skyDistanceTexture.getId();
     }
 
     public int originX() {
@@ -114,6 +147,7 @@ public final class BlockLightTexture implements AutoCloseable {
             lastAffectedByLights = affectedByLights;
         } else if (!pending && !anyDirty && camSecX == lastCamSecX && camSecZ == lastCamSecZ
                 && chunkRadius == lastChunkRadius && loadedChunks == lastLoadedChunks) {
+            updateSkyDistances();
             return;
         }
 
@@ -160,21 +194,114 @@ public final class BlockLightTexture implements AutoCloseable {
             dirtySlots[slot] = false;
             slotPos[slot] = pos;
             slotChunk[slot] = chunk;
+            heightsChanged = false;
             setSlotHasLight(slot, writeChunk(pixels, chunk, secX, secZ, blockListener));
+            if (heightsChanged) markSkyDirty(secX, secZ);
             changedSlots[changed++] = slot;
         }
 
-        if (changed == 0) return;
+        if (changed > 0) {
+            RenderSystem.assertOnRenderThread();
+            if (changed > MAX_PARTIAL_UPLOADS) {
+                texture.upload();
+            } else {
+                texture.bind();
+                for (int i = 0; i < changed; i++) {
+                    int x = (changedSlots[i] % CHUNKS_SPAN) << 4;
+                    int y = (changedSlots[i] / CHUNKS_SPAN) << 4;
+                    pixels.upload(0, x, y, x, y, 16, 16, false, false);
+                }
+            }
+        }
 
-        RenderSystem.assertOnRenderThread();
-        if (changed > MAX_PARTIAL_UPLOADS) {
-            texture.upload();
+        updateSkyDistances();
+    }
+
+    private void markSkyDirty(int secX, int secZ) {
+        for (int dz = -1; dz <= 1; dz++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                int slot = slot(secX + dx, secZ + dz);
+                if (!skyDirtySlots[slot]) {
+                    skyDirtySlots[slot] = true;
+                    skyDirtyCount++;
+                }
+            }
+        }
+    }
+
+    private void updateSkyDistances() {
+        if (skyDirtyCount == 0) return;
+        NativeImage pixels = skyDistanceTexture.getPixels();
+        if (pixels == null) return;
+        long start = System.nanoTime();
+
+        int tiles = 0;
+        for (int packed : SCAN_ORDER) {
+            int slot = slot(lastCamSecX + (packed & 0xFF) - CHUNKS_RADIUS, lastCamSecZ + (packed >> 8) - CHUNKS_RADIUS);
+            if (!skyDirtySlots[slot]) continue;
+
+            skyDirtySlots[slot] = false;
+            skyDirtyCount--;
+            writeSkyDistances(pixels, slot);
+            skyTiles[tiles++] = slot;
+            if (skyDirtyCount == 0 || System.nanoTime() - start > SKY_BUDGET_NS) break;
+        }
+
+        skyDistanceTexture.bind();
+        if (tiles > MAX_PARTIAL_UPLOADS) {
+            skyDistanceTexture.upload();
         } else {
-            texture.bind();
-            for (int i = 0; i < changed; i++) {
-                int x = (changedSlots[i] % CHUNKS_SPAN) << 4;
-                int y = (changedSlots[i] / CHUNKS_SPAN) << 4;
+            for (int i = 0; i < tiles; i++) {
+                int x = (skyTiles[i] % CHUNKS_SPAN) << 4;
+                int y = (skyTiles[i] / CHUNKS_SPAN) << 4;
                 pixels.upload(0, x, y, x, y, 16, 16, false, false);
+            }
+        }
+    }
+
+    private void writeSkyDistances(NativeImage pixels, int slot) {
+        int pixelBaseX = (slot % CHUNKS_SPAN) << 4;
+        int pixelBaseY = (slot / CHUNKS_SPAN) << 4;
+        long pos = slotPos[slot];
+        if (pos == ChunkPos.INVALID_CHUNK_POS) {
+            pixels.fillRect(pixelBaseX, pixelBaseY, 16, 16, 0);
+            return;
+        }
+
+        int blockBaseX = ChunkPos.getX(pos) << 4;
+        int blockBaseZ = ChunkPos.getZ(pos) << 4;
+        boolean inside = blockBaseX - MAX_SKY_DISTANCE >= originX && blockBaseZ - MAX_SKY_DISTANCE >= originZ
+                && blockBaseX + 16 + MAX_SKY_DISTANCE <= originX + SIZE && blockBaseZ + 16 + MAX_SKY_DISTANCE <= originZ + SIZE;
+        for (int lz = 0; lz < 16; lz++) {
+            for (int lx = 0; lx < 16; lx++) {
+                int x = blockBaseX + lx;
+                int z = blockBaseZ + lz;
+                int surface = surfaceHeights[(z & (SIZE - 1)) * SIZE + (x & (SIZE - 1))];
+                if (surface == NO_SURFACE) {
+                    pixels.setPixelRGBA(pixelBaseX + lx, pixelBaseY + lz, 0);
+                    continue;
+                }
+
+                int best = Integer.MAX_VALUE;
+                int i = 0;
+                for (int step = 0; step < SKY_STEPS.length; step++) {
+                    for (int end = SKY_STEP_END[step]; i < end; i++) {
+                        int nx = x + DIAMOND_X[i];
+                        int nz = z + DIAMOND_Z[i];
+                        if (!inside && (nx < originX || nz < originZ || nx >= originX + SIZE || nz >= originZ + SIZE))
+                            continue;
+                        int height = surfaceHeights[(nz & (SIZE - 1)) * SIZE + (nx & (SIZE - 1))];
+                        if (height != NO_SURFACE) best = Math.min(best, height + DIAMOND_DISTANCE[i]);
+                    }
+                    skyStepMins[step] = best;
+                }
+
+                int rgba = 0;
+                for (int k = 0; k < SKY_STEPS.length; k++) {
+                    int depth = Mth.clamp(surface - skyStepMins[k] + SKY_STEPS[k], 0, 255);
+                    rgba |= depth << (k * 8);
+                }
+                pixels.setPixelRGBA(pixelBaseX + lx, pixelBaseY + lz, rgba);
             }
         }
     }
@@ -184,6 +311,15 @@ public final class BlockLightTexture implements AutoCloseable {
         int pixelBaseY = (secZ & (CHUNKS_SPAN - 1)) << 4;
         if (chunk == null) {
             pixels.fillRect(pixelBaseX, pixelBaseY, 16, 16, 0);
+            for (int lz = 0; lz < 16; lz++) {
+                int row = (pixelBaseY + lz) * SIZE + pixelBaseX;
+                for (int lx = 0; lx < 16; lx++) {
+                    if (surfaceHeights[row + lx] != NO_SURFACE) {
+                        surfaceHeights[row + lx] = NO_SURFACE;
+                        heightsChanged = true;
+                    }
+                }
+            }
             return false;
         }
 
@@ -204,6 +340,11 @@ public final class BlockLightTexture implements AutoCloseable {
         for (int lz = 0; lz < 16; lz++) {
             for (int lx = 0; lx < 16; lx++) {
                 int surfaceY = shadowSurfaceY(chunk, lx, lz);
+                int heightIndex = (pixelBaseY + lz) * SIZE + pixelBaseX + lx;
+                if (surfaceHeights[heightIndex] != surfaceY) {
+                    surfaceHeights[heightIndex] = surfaceY;
+                    heightsChanged = true;
+                }
 
                 int light = 0;
                 if (chunkHasBlockLight) {
@@ -272,5 +413,6 @@ public final class BlockLightTexture implements AutoCloseable {
     @Override
     public void close() {
         texture.close();
+        skyDistanceTexture.close();
     }
 }

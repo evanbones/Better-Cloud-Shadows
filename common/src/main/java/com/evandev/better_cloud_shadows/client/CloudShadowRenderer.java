@@ -237,6 +237,7 @@ public final class CloudShadowRenderer {
         }
 
         instance.setSampler("BlockLightSampler", blockLight.textureId());
+        instance.setSampler("SkyDistanceSampler", blockLight.skyDistanceTextureId());
         instance.safeGetUniform("HasBlockLight").set(hasBlockLight ? 1 : 0);
         instance.safeGetUniform("SurfaceLightOrigin").set(
                 (float) blockLight.originX(),

@@ -40,7 +40,7 @@ public final class YaclConfigScreen {
                         .option(Option.<Double>createBuilder()
                                 .name(name("cloudShadowStrength"))
                                 .description(tooltip("cloudShadowStrength"))
-                                .binding(0.75, () -> config.cloudShadowStrength, value -> config.cloudShadowStrength = value)
+                                .binding(1.0, () -> config.cloudShadowStrength, value -> config.cloudShadowStrength = value)
                                 .controller(opt -> DoubleSliderControllerBuilder.create(opt)
                                         .range(0.0, ModConfig.MAX_STRENGTH)
                                         .step(0.05))

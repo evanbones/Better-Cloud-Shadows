@@ -33,7 +33,7 @@ public class ModConfig {
     public boolean affectedByLights = true;
 
     @SerializedName("cloudShadowStrength")
-    public double cloudShadowStrength = 0.75;
+    public double cloudShadowStrength = 1.0;
 
     @SerializedName("cloudShadowSoftness")
     public int cloudShadowSoftness = DEFAULT_SOFTNESS;
