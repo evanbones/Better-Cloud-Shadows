@@ -84,6 +84,7 @@ vec4 sampleCoverage(vec2 uv) {
 float layerCoverage(vec3 world, float height, float thickness, vec4 origin, vec4 channel) {
     float toCloud = height - world.y;
     if (toCloud <= thickness) return 0.0;
+    float heightFade = smoothstep(thickness, thickness + 1.0, toCloud);
 
     vec2 hit = world.xz + SunDir.xz * min(toCloud / SunDir.y, ShearLimit) * ShearScale;
 
@@ -92,7 +93,7 @@ float layerCoverage(vec3 world, float height, float thickness, vec4 origin, vec4
     float edgeFade = smoothstep(0.0, origin.w, min(toEdge.x, toEdge.y));
     if (edgeFade <= 0.0) return 0.0;
 
-    return dot(sampleCoverage(clamp(uv, 0.0, 1.0)), channel) * edgeFade;
+    return dot(sampleCoverage(clamp(uv, 0.0, 1.0)), channel) * edgeFade * heightFade;
 }
 
 float skyDistance(ivec2 texel, float surfaceY, float y) {
