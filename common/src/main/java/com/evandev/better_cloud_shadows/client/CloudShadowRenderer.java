@@ -22,6 +22,7 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL30;
 
+import java.lang.ref.WeakReference;
 import java.util.List;
 
 public final class CloudShadowRenderer {
@@ -56,7 +57,7 @@ public final class CloudShadowRenderer {
     private static RenderTarget depthCopy;
     private static CloudCoverageTexture coverage;
     private static BlockLightTexture blockLight;
-    private static ClientLevel lastLevel;
+    private static WeakReference<ClientLevel> lastLevel = new WeakReference<>(null);
 
     private CloudShadowRenderer() {
     }
@@ -75,8 +76,8 @@ public final class CloudShadowRenderer {
 
         Minecraft minecraft = Minecraft.getInstance();
         ClientLevel level = minecraft.level;
-        if (level != lastLevel) {
-            lastLevel = level;
+        if (level != lastLevel.get()) {
+            lastLevel = new WeakReference<>(level);
             reset();
         }
         if (level == null) return;

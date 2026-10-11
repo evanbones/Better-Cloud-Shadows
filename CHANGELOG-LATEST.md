@@ -1,3 +1,3 @@
 ### Fixed
 
-- Fixed z-fighting with powder snow.
+- Fixed memory leak.
