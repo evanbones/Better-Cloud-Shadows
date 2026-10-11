@@ -41,14 +41,18 @@ in vec2 texCoord;
 
 out vec4 fragColor;
 
+const float DEPTH_ERROR_STEP = 4.0 / 16777216.0;
+const float MIN_LAYER_MARGIN = 0.05;
+
 vec3 unproject(mat4 inverseViewProjection, float depth) {
     vec4 clip = vec4(texCoord * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
     vec4 unprojected = inverseViewProjection * clip;
     return unprojected.xyz / unprojected.w;
 }
 
-bool insideLayer(float y, float height, float thickness) {
-    return y >= height - 1.0 && y <= height + thickness + 1.0;
+float outsideLayer(float y, float height, float thickness, float margin) {
+    return 1.0 - smoothstep(height - 2.0 * margin, height - margin, y)
+            * (1.0 - smoothstep(height + thickness + margin, height + thickness + 2.0 * margin, y));
 }
 
 vec4 bsplineWeights(float t) {
@@ -81,12 +85,14 @@ vec4 sampleCoverage(vec2 uv) {
     return mix(mix(s3, s2, sx), mix(s1, s0, sx), sy);
 }
 
-float layerCoverage(vec3 world, float height, float thickness, vec4 origin, vec4 channel) {
+float layerCoverage(vec3 world, float height, float thickness, float margin, vec4 origin, vec4 channel) {
+    // height is the cloud base and thickness extends upward, so anything below the top can be shaded
     float toCloud = height - world.y;
-    if (toCloud <= thickness) return 0.0;
-    float heightFade = smoothstep(thickness, thickness + 1.0, toCloud);
+    float belowTop = toCloud + thickness;
+    if (belowTop <= -2.0 * margin) return 0.0;
+    float heightFade = smoothstep(-2.0 * margin, -margin, belowTop);
 
-    vec2 hit = world.xz + SunDir.xz * min(toCloud / SunDir.y, ShearLimit) * ShearScale;
+    vec2 hit = world.xz + SunDir.xz * min(max(toCloud, 0.0) / SunDir.y, ShearLimit) * ShearScale;
 
     vec2 uv = (hit - origin.xy) * origin.z;
     vec2 toEdge = min(uv, 1.0 - uv);
@@ -160,12 +166,17 @@ vec3 blockLightColor(float level) {
 void main() {
     float depth = texture(DepthSampler, texCoord).r;
     vec3 relative;
+    float depthError;
+    bool dhSurface = false;
     if (depth < 1.0) {
         relative = unproject(InvViewProjMat, depth);
+        depthError = distance(unproject(InvViewProjMat, depth + DEPTH_ERROR_STEP), relative);
     } else if (UseDhDepth == 1) {
         float dhDepth = texture(DhDepthSampler, texCoord).r;
         if (dhDepth >= 1.0) discard;
         relative = unproject(DhInvViewProjMat, dhDepth);
+        depthError = distance(unproject(DhInvViewProjMat, dhDepth + DEPTH_ERROR_STEP), relative);
+        dhSurface = true;
     } else {
         discard;
     }
@@ -174,10 +185,16 @@ void main() {
 
     if (world.y < MinWorldY + 0.002) discard;
 
-    if (insideLayer(world.y, CloudHeights.x, CloudThickness.x)) discard;
-    if (LayerCount > 1 && insideLayer(world.y, CloudHeights.y, CloudThickness.y)) discard;
-    if (LayerCount > 2 && insideLayer(world.y, CloudHeights.z, CloudThickness.z)) discard;
-    if (LayerCount > 3 && insideLayer(world.y, CloudHeights.w, CloudThickness.w)) discard;
+    float margin = MIN_LAYER_MARGIN + depthError;
+
+    float layerMask = 1.0;
+    if (dhSurface) {
+        layerMask = outsideLayer(world.y, CloudHeights.x, CloudThickness.x, margin);
+        if (LayerCount > 1) layerMask *= outsideLayer(world.y, CloudHeights.y, CloudThickness.y, margin);
+        if (LayerCount > 2) layerMask *= outsideLayer(world.y, CloudHeights.z, CloudThickness.z, margin);
+        if (LayerCount > 3) layerMask *= outsideLayer(world.y, CloudHeights.w, CloudThickness.w, margin);
+        if (layerMask <= 0.0) discard;
+    }
 
     vec2 surfaceInfo = sampleSurfaceInfo(world);
     float blockLight = surfaceInfo.x;
@@ -185,15 +202,15 @@ void main() {
     float surfaceFactor = 1.0 - smoothstep(2.0, 8.0, surfaceInfo.y);
     if (surfaceFactor <= 0.0) discard;
 
-    float transmittance = 1.0 - layerCoverage(world, CloudHeights.x, CloudThickness.x, CoverageOrigin0, vec4(1.0, 0.0, 0.0, 0.0));
+    float transmittance = 1.0 - layerCoverage(world, CloudHeights.x, CloudThickness.x, margin, CoverageOrigin0, vec4(1.0, 0.0, 0.0, 0.0));
     if (LayerCount > 1) {
-        transmittance *= 1.0 - layerCoverage(world, CloudHeights.y, CloudThickness.y, CoverageOrigin1, vec4(0.0, 1.0, 0.0, 0.0));
+        transmittance *= 1.0 - layerCoverage(world, CloudHeights.y, CloudThickness.y, margin, CoverageOrigin1, vec4(0.0, 1.0, 0.0, 0.0));
     }
     if (LayerCount > 2) {
-        transmittance *= 1.0 - layerCoverage(world, CloudHeights.z, CloudThickness.z, CoverageOrigin2, vec4(0.0, 0.0, 1.0, 0.0));
+        transmittance *= 1.0 - layerCoverage(world, CloudHeights.z, CloudThickness.z, margin, CoverageOrigin2, vec4(0.0, 0.0, 1.0, 0.0));
     }
     if (LayerCount > 3) {
-        transmittance *= 1.0 - layerCoverage(world, CloudHeights.w, CloudThickness.w, CoverageOrigin3, vec4(0.0, 0.0, 0.0, 1.0));
+        transmittance *= 1.0 - layerCoverage(world, CloudHeights.w, CloudThickness.w, margin, CoverageOrigin3, vec4(0.0, 0.0, 0.0, 1.0));
     }
 
     float coverage = 1.0 - transmittance;
@@ -222,7 +239,7 @@ void main() {
         if (d < 7.75) blockLight = max(blockLight, (1.0 - d / 7.75) * DynamicLight3.w);
     }
 
-    float shade = clamp(ShadowColor.a * coverage * fade * visibility * surfaceFactor, 0.0, 1.0);
+    float shade = clamp(ShadowColor.a * coverage * fade * visibility * surfaceFactor * layerMask, 0.0, 1.0);
     vec3 shadowed = mix(vec3(1.0), ShadowColor.rgb, shade);
     if (blockLight > 0.0) {
         shadowed = min(shadowed + blockLightColor(blockLight), vec3(1.0));

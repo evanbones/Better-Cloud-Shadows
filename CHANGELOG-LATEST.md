@@ -1,3 +1,3 @@
 ### Fixed
 
-- Fixed memory leak.
+- Properly fix z-fighting with shadows.
