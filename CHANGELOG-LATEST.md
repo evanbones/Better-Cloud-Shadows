@@ -1,3 +1,3 @@
-### Fixed
+### Changed
 
-- Properly fix z-fighting with shadows.
+- Performance improvements.

@@ -10,6 +10,7 @@
     "ClientChunkCacheMixin",
     "ClientLevelMixin",
     "LevelRendererAccessor",
+    "MinecraftMixin",
     "betterclouds.ChunkedGeneratorAccessor",
     "cloudtweaks.CustomCloudRendererAccessor",
     "distanthorizons.RenderableBoxGroupMixin",

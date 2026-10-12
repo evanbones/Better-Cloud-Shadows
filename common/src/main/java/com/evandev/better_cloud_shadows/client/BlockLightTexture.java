@@ -1,6 +1,7 @@
 package com.evandev.better_cloud_shadows.client;
 
 import com.mojang.blaze3d.platform.NativeImage;
+import it.unimi.dsi.fastutil.objects.Reference2ByteOpenHashMap;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
@@ -48,21 +49,12 @@ public final class BlockLightTexture implements AutoCloseable {
     private static final int MAX_PARTIAL_UPLOADS = 64;
     private static final int[] SKY_STEPS = {2, 4, 6, 8};
     private static final int MAX_SKY_DISTANCE = SKY_STEPS[SKY_STEPS.length - 1];
-    private static final int[] DIAMOND = IntStream.rangeClosed(-MAX_SKY_DISTANCE, MAX_SKY_DISTANCE)
-            .flatMap(dz -> IntStream.rangeClosed(-MAX_SKY_DISTANCE, MAX_SKY_DISTANCE)
-                    .map(dx -> (dx + 128) | (dz + 128) << 8))
-            .filter(packed -> diamondDistance(packed) <= MAX_SKY_DISTANCE)
-            .boxed()
-            .sorted(Comparator.comparingInt(BlockLightTexture::diamondDistance))
-            .mapToInt(Integer::intValue)
-            .toArray();
-    private static final int[] DIAMOND_X = Arrays.stream(DIAMOND).map(packed -> (packed & 0xFF) - 128).toArray();
-    private static final int[] DIAMOND_Z = Arrays.stream(DIAMOND).map(packed -> (packed >> 8) - 128).toArray();
-    private static final int[] DIAMOND_DISTANCE = Arrays.stream(DIAMOND).map(BlockLightTexture::diamondDistance).toArray();
-    private static final int[] SKY_STEP_END = Arrays.stream(SKY_STEPS)
-            .map(step -> (int) Arrays.stream(DIAMOND_DISTANCE).filter(distance -> distance <= step).count())
-            .toArray();
+    private static final int SKY_WINDOW = 16 + MAX_SKY_DISTANCE * 2;
     private static final int NO_SURFACE = Integer.MAX_VALUE;
+    private static final int FAR_SURFACE = 1 << 28;
+    private static final byte COLUMN_LEAVES = 1;
+    private static final byte COLUMN_LOG = 2;
+    private static final byte COLUMN_SOLID = 4;
     private static final long SKY_BUDGET_NS = 1_000_000L;
     private static boolean anyDirty;
     private final DynamicTexture texture;
@@ -70,7 +62,9 @@ public final class BlockLightTexture implements AutoCloseable {
     private final int[] surfaceHeights = new int[SIZE * SIZE];
     private final boolean[] skyDirtySlots = new boolean[SLOTS];
     private final int[] skyTiles = new int[SLOTS];
-    private final int[] skyStepMins = new int[SKY_STEPS.length];
+    private final int[] skyHeights = new int[SKY_WINDOW * SKY_WINDOW];
+    private final int[] skyRowMins = new int[(MAX_SKY_DISTANCE + 1) * SKY_WINDOW * 16];
+    private final Reference2ByteOpenHashMap<BlockState> columnKinds = new Reference2ByteOpenHashMap<>();
     private final BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
     private final long[] slotPos = new long[SLOTS];
     private final LevelChunk[] slotChunk = new LevelChunk[SLOTS];
@@ -94,10 +88,6 @@ public final class BlockLightTexture implements AutoCloseable {
         this.skyDistanceTexture = new DynamicTexture(SIZE, SIZE, false);
         Arrays.fill(slotPos, ChunkPos.INVALID_CHUNK_POS);
         Arrays.fill(surfaceHeights, NO_SURFACE);
-    }
-
-    private static int diamondDistance(int packed) {
-        return Math.abs((packed & 0xFF) - 128) + Math.abs((packed >> 8) - 128);
     }
 
     public static void markDirty(int secX, int secZ) {
@@ -162,6 +152,7 @@ public final class BlockLightTexture implements AutoCloseable {
         originZ = (camSecZ - CHUNKS_RADIUS) << 4;
         anyDirty = false;
         pending = false;
+        columnKinds.clear();
 
         LayerLightEventListener blockListener = affectedByLights
                 ? level.getLightEngine().getLayerListener(LightLayer.BLOCK)
@@ -270,35 +261,49 @@ public final class BlockLightTexture implements AutoCloseable {
 
         int blockBaseX = ChunkPos.getX(pos) << 4;
         int blockBaseZ = ChunkPos.getZ(pos) << 4;
-        boolean inside = blockBaseX - MAX_SKY_DISTANCE >= originX && blockBaseZ - MAX_SKY_DISTANCE >= originZ
-                && blockBaseX + 16 + MAX_SKY_DISTANCE <= originX + SIZE && blockBaseZ + 16 + MAX_SKY_DISTANCE <= originZ + SIZE;
-        for (int lz = 0; lz < 16; lz++) {
+        for (int iz = 0; iz < SKY_WINDOW; iz++) {
+            int z = blockBaseZ - MAX_SKY_DISTANCE + iz;
+            boolean rowInside = z >= originZ && z < originZ + SIZE;
+            int row = (z & (SIZE - 1)) * SIZE;
+            for (int ix = 0; ix < SKY_WINDOW; ix++) {
+                int x = blockBaseX - MAX_SKY_DISTANCE + ix;
+                int height = rowInside && x >= originX && x < originX + SIZE ? surfaceHeights[row + (x & (SIZE - 1))] : NO_SURFACE;
+                skyHeights[iz * SKY_WINDOW + ix] = height == NO_SURFACE ? FAR_SURFACE : height;
+            }
+        }
+
+        for (int iz = 0; iz < SKY_WINDOW; iz++) {
+            int rowBase = iz * SKY_WINDOW + MAX_SKY_DISTANCE;
             for (int lx = 0; lx < 16; lx++) {
-                int x = blockBaseX + lx;
-                int z = blockBaseZ + lz;
-                int surface = surfaceHeights[(z & (SIZE - 1)) * SIZE + (x & (SIZE - 1))];
+                int center = rowBase + lx;
+                int best = skyHeights[center];
+                skyRowMins[iz * 16 + lx] = best;
+                for (int r = 1; r <= MAX_SKY_DISTANCE; r++) {
+                    best = Math.min(best, Math.min(skyHeights[center - r], skyHeights[center + r]) + r);
+                    skyRowMins[(r * SKY_WINDOW + iz) * 16 + lx] = best;
+                }
+            }
+        }
+
+        for (int lz = 0; lz < 16; lz++) {
+            int row = ((blockBaseZ + lz) & (SIZE - 1)) * SIZE;
+            for (int lx = 0; lx < 16; lx++) {
+                int surface = surfaceHeights[row + ((blockBaseX + lx) & (SIZE - 1))];
                 if (surface == NO_SURFACE) {
                     pixels.setPixelRGBA(pixelBaseX + lx, pixelBaseY + lz, 0);
                     continue;
                 }
 
-                int best = Integer.MAX_VALUE;
-                int i = 0;
-                for (int step = 0; step < SKY_STEPS.length; step++) {
-                    for (int end = SKY_STEP_END[step]; i < end; i++) {
-                        int nx = x + DIAMOND_X[i];
-                        int nz = z + DIAMOND_Z[i];
-                        if (!inside && (nx < originX || nz < originZ || nx >= originX + SIZE || nz >= originZ + SIZE))
-                            continue;
-                        int height = surfaceHeights[(nz & (SIZE - 1)) * SIZE + (nx & (SIZE - 1))];
-                        if (height != NO_SURFACE) best = Math.min(best, height + DIAMOND_DISTANCE[i]);
-                    }
-                    skyStepMins[step] = best;
-                }
-
                 int rgba = 0;
                 for (int k = 0; k < SKY_STEPS.length; k++) {
-                    int depth = Mth.clamp(surface - skyStepMins[k] + SKY_STEPS[k], 0, 255);
+                    int step = SKY_STEPS[k];
+                    int best = FAR_SURFACE;
+                    for (int dz = -step; dz <= step; dz++) {
+                        int distance = Math.abs(dz);
+                        best = Math.min(best, skyRowMins[((step - distance) * SKY_WINDOW + lz + MAX_SKY_DISTANCE + dz) * 16 + lx] + distance);
+                    }
+                    if (best >= FAR_SURFACE) best = Integer.MAX_VALUE;
+                    int depth = Mth.clamp(surface - best + step, 0, 255);
                     rgba |= depth << (k * 8);
                 }
                 pixels.setPixelRGBA(pixelBaseX + lx, pixelBaseY + lz, rgba);
@@ -382,16 +387,14 @@ public final class BlockLightTexture implements AutoCloseable {
                 continue;
             }
 
-            BlockState state = section.getBlockState(lx, y & 15, lz);
-            Block block = state.getBlock();
-            if (block instanceof LeavesBlock || state.is(BlockTags.LEAVES)) {
+            byte kind = columnKind(section.getBlockState(lx, y & 15, lz));
+            if ((kind & COLUMN_LEAVES) != 0) {
                 sawLeaves = true;
                 logTop = Integer.MIN_VALUE;
-            } else if (sawLeaves && (state.is(BlockTags.LOGS) || state.is(Blocks.BEE_NEST))) {
+            } else if (sawLeaves && (kind & COLUMN_LOG) != 0) {
                 // branches under a canopy are skipped so the ground beneath them isn't considered underground
                 if (logTop == Integer.MIN_VALUE) logTop = y;
-            } else if (!(block instanceof SnowLayerBlock)
-                    && (state.blocksMotion() || !state.getFluidState().isEmpty())) {
+            } else if ((kind & COLUMN_SOLID) != 0) {
                 break;
             } else {
                 logTop = Integer.MIN_VALUE;
@@ -401,6 +404,18 @@ public final class BlockLightTexture implements AutoCloseable {
 
         if (logTop != Integer.MIN_VALUE && y >= minY) return logTop;
         return Math.max(y, minY);
+    }
+
+    private byte columnKind(BlockState state) {
+        byte kind = columnKinds.getOrDefault(state, (byte) -1);
+        if (kind != -1) return kind;
+        Block block = state.getBlock();
+        kind = 0;
+        if (block instanceof LeavesBlock || state.is(BlockTags.LEAVES)) kind |= COLUMN_LEAVES;
+        if (state.is(BlockTags.LOGS) || state.is(Blocks.BEE_NEST)) kind |= COLUMN_LOG;
+        if (!(block instanceof SnowLayerBlock) && (state.blocksMotion() || !state.getFluidState().isEmpty())) kind |= COLUMN_SOLID;
+        columnKinds.put(state, kind);
+        return kind;
     }
 
     private void setSlotHasLight(int slot, boolean hasLight) {
