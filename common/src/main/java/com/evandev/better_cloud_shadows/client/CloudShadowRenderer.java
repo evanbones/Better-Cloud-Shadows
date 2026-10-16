@@ -55,6 +55,7 @@ public final class CloudShadowRenderer {
 
     private static ShaderInstance shader;
     private static RenderTarget depthCopy;
+    private static int lastMainDepthTexture = -1;
     private static CloudCoverageTexture coverage;
     private static BlockLightTexture blockLight;
     private static WeakReference<ClientLevel> lastLevel = new WeakReference<>(null);
@@ -151,10 +152,12 @@ public final class CloudShadowRenderer {
         float fadeEnd = Math.min(shadowDistance, coveredRadius * 0.95f);
 
         RenderTarget main = minecraft.getMainRenderTarget();
-        if (depthCopy == null || depthCopy.width != main.width || depthCopy.height != main.height) {
+        if (depthCopy == null || depthCopy.width != main.width || depthCopy.height != main.height
+                || lastMainDepthTexture != main.getDepthTextureId()) {
             if (depthCopy != null) depthCopy.destroyBuffers();
             depthCopy = new TextureTarget(main.width, main.height, true, Minecraft.ON_OSX);
             matchDepthFormat(depthCopy, main);
+            lastMainDepthTexture = main.getDepthTextureId();
         }
 
         RenderSystem.depthMask(true);
@@ -292,16 +295,33 @@ public final class CloudShadowRenderer {
                 GL30.GL_READ_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE);
         int componentType = GL30.glGetFramebufferAttachmentParameteri(
                 GL30.GL_READ_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE);
+        // the blit fails if the formats don't match exactly, so check for stencil too
+        // (some mods turn it on, e.g. supplementaries)
+        boolean hasStencil = GL30.glGetFramebufferAttachmentParameteri(
+                GL30.GL_READ_FRAMEBUFFER, GL30.GL_STENCIL_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE) != GL11.GL_NONE;
         GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
 
         int internalFormat;
+        int format = GL11.GL_DEPTH_COMPONENT;
         int type;
         if (componentType == GL11.GL_FLOAT && bits == 32) {
-            internalFormat = GL30.GL_DEPTH_COMPONENT32F;
-            type = GL11.GL_FLOAT;
+            if (hasStencil) {
+                internalFormat = GL30.GL_DEPTH32F_STENCIL8;
+                format = GL30.GL_DEPTH_STENCIL;
+                type = GL30.GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
+            } else {
+                internalFormat = GL30.GL_DEPTH_COMPONENT32F;
+                type = GL11.GL_FLOAT;
+            }
         } else if (bits == 24) {
-            internalFormat = GL14.GL_DEPTH_COMPONENT24;
-            type = GL11.GL_UNSIGNED_INT;
+            if (hasStencil) {
+                internalFormat = GL30.GL_DEPTH24_STENCIL8;
+                format = GL30.GL_DEPTH_STENCIL;
+                type = GL30.GL_UNSIGNED_INT_24_8;
+            } else {
+                internalFormat = GL14.GL_DEPTH_COMPONENT24;
+                type = GL11.GL_UNSIGNED_INT;
+            }
         } else if (bits == 16) {
             internalFormat = GL14.GL_DEPTH_COMPONENT16;
             type = GL11.GL_UNSIGNED_SHORT;
@@ -315,8 +335,16 @@ public final class CloudShadowRenderer {
         GlStateManager._bindTexture(copy.getDepthTextureId());
         GlStateManager._texImage2D(
                 GL11.GL_TEXTURE_2D, 0, internalFormat, copy.width, copy.height, 0,
-                GL11.GL_DEPTH_COMPONENT, type, null);
+                format, type, null);
         GlStateManager._bindTexture(0);
+
+        if (hasStencil) {
+            // hook it up as depth+stencil, same as the main target
+            GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, copy.frameBufferId);
+            GlStateManager._glFramebufferTexture2D(
+                    GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_STENCIL_ATTACHMENT, GL11.GL_TEXTURE_2D, copy.getDepthTextureId(), 0);
+            GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
+        }
     }
 
     private static float smoothstep(float edge0, float edge1, float value) {
