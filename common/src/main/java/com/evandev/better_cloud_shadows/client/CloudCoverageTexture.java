@@ -6,6 +6,8 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.util.Mth;
 
+import java.util.Arrays;
+
 public final class CloudCoverageTexture implements AutoCloseable {
 
     public static final int SIZE = 256;
@@ -18,11 +20,14 @@ public final class CloudCoverageTexture implements AutoCloseable {
     private static final float SIGMA_STEP = 16f;
 
     private static final int PADDED = SIZE + PAD * 2;
+    private static final int LINE_PAD = MAX_BLUR_RADIUS + 1;
 
     private final DynamicTexture texture;
     private final Slice[] slices = new Slice[CloudField.MAX_LAYERS];
     private final float[] work = new float[PADDED * PADDED];
     private final float[] scratch = new float[PADDED * PADDED];
+    private final float[] line = new float[PADDED + LINE_PAD * 2];
+    private final float[] columnSums = new float[PADDED];
 
     private int uploadedLayers;
 
@@ -203,34 +208,42 @@ public final class CloudCoverageTexture implements AutoCloseable {
         int whole = (int) radius;
         float edge = radius - whole;
         float weight = 1f / (1f + 2f * whole + 2f * edge);
+        int outer = whole + 1;
 
+        // rows are copied into an edge-extended line so the window never needs clamping
         for (int y = 0; y < PADDED; y++) {
             int row = y * PADDED;
+            System.arraycopy(work, row, line, LINE_PAD, PADDED);
+            float first = work[row];
+            float last = work[row + PADDED - 1];
+            for (int i = 1; i <= LINE_PAD; i++) {
+                line[LINE_PAD - i] = first;
+                line[LINE_PAD + PADDED - 1 + i] = last;
+            }
+
+            float sum = 0;
+            for (int d = -whole; d <= whole; d++) sum += line[LINE_PAD + d];
             for (int x = 0; x < PADDED; x++) {
-                float sum = work[row + x];
-                for (int d = 1; d <= whole; d++) {
-                    sum += work[row + Mth.clamp(x - d, 0, PADDED - 1)];
-                    sum += work[row + Mth.clamp(x + d, 0, PADDED - 1)];
-                }
-                if (edge > 0) {
-                    sum += edge * work[row + Mth.clamp(x - whole - 1, 0, PADDED - 1)];
-                    sum += edge * work[row + Mth.clamp(x + whole + 1, 0, PADDED - 1)];
-                }
-                scratch[row + x] = sum * weight;
+                int center = LINE_PAD + x;
+                scratch[row + x] = (sum + edge * (line[center - outer] + line[center + outer])) * weight;
+                sum += line[center + outer] - line[center - whole];
             }
         }
+
+        // columns keep running sums while walking down the rows, which keeps memory access sequential
+        Arrays.fill(columnSums, 0f);
+        for (int d = -whole; d <= whole; d++) {
+            int source = Mth.clamp(d, 0, PADDED - 1) * PADDED;
+            for (int x = 0; x < PADDED; x++) columnSums[x] += scratch[source + x];
+        }
         for (int y = 0; y < PADDED; y++) {
+            int row = y * PADDED;
+            int above = Mth.clamp(y - outer, 0, PADDED - 1) * PADDED;
+            int below = Mth.clamp(y + outer, 0, PADDED - 1) * PADDED;
+            int leaving = Mth.clamp(y - whole, 0, PADDED - 1) * PADDED;
             for (int x = 0; x < PADDED; x++) {
-                float sum = scratch[y * PADDED + x];
-                for (int d = 1; d <= whole; d++) {
-                    sum += scratch[Mth.clamp(y - d, 0, PADDED - 1) * PADDED + x];
-                    sum += scratch[Mth.clamp(y + d, 0, PADDED - 1) * PADDED + x];
-                }
-                if (edge > 0) {
-                    sum += edge * scratch[Mth.clamp(y - whole - 1, 0, PADDED - 1) * PADDED + x];
-                    sum += edge * scratch[Mth.clamp(y + whole + 1, 0, PADDED - 1) * PADDED + x];
-                }
-                work[y * PADDED + x] = sum * weight;
+                work[row + x] = (columnSums[x] + edge * (scratch[above + x] + scratch[below + x])) * weight;
+                columnSums[x] += scratch[below + x] - scratch[leaving + x];
             }
         }
     }

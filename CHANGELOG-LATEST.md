@@ -1,3 +1,3 @@
-### Changed
+### Fixed
 
-- Performance improvements.
+- Fixed lag when quickly moving across chunks.
