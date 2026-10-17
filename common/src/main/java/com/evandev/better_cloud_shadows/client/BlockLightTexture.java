@@ -51,6 +51,7 @@ public final class BlockLightTexture implements AutoCloseable {
     private static final int MAX_SKY_DISTANCE = SKY_STEPS[SKY_STEPS.length - 1];
     private static final int SKY_WINDOW = 16 + MAX_SKY_DISTANCE * 2;
     private static final int NO_SURFACE = Integer.MAX_VALUE;
+    private static final int UNKNOWN_SKY = 0xFFFFFFFF;
     private static final int FAR_SURFACE = 1 << 28;
     private static final byte COLUMN_LEAVES = 1;
     private static final byte COLUMN_LOG = 2;
@@ -73,6 +74,7 @@ public final class BlockLightTexture implements AutoCloseable {
     private final LevelChunk[] slotChunk = new LevelChunk[SLOTS];
     private final boolean[] slotHasLight = new boolean[SLOTS];
     private final int[] changedSlots = new int[SLOTS];
+    private final int[] resetSkySlots = new int[SLOTS];
     private final int[] rowMinX = new int[CHUNKS_SPAN];
     private final int[] rowMaxX = new int[CHUNKS_SPAN];
     private int skyDirtyCount;
@@ -151,7 +153,8 @@ public final class BlockLightTexture implements AutoCloseable {
         }
 
         NativeImage pixels = texture.getPixels();
-        if (pixels == null) return;
+        NativeImage skyPixels = skyDistanceTexture.getPixels();
+        if (pixels == null || skyPixels == null) return;
 
         lastCamSecX = camSecX;
         lastCamSecZ = camSecZ;
@@ -172,6 +175,7 @@ public final class BlockLightTexture implements AutoCloseable {
         long start = System.nanoTime();
         int builds = 0;
         int changed = 0;
+        int resetSky = 0;
         for (int packed : SCAN_ORDER) {
             int dx = (packed & 0xFF) - CHUNKS_RADIUS;
             int dz = (packed >> 8) - CHUNKS_RADIUS;
@@ -194,13 +198,20 @@ public final class BlockLightTexture implements AutoCloseable {
             }
 
             if (chunk != null) builds++;
+            boolean newChunk = !sameChunk || slotChunk[slot] != chunk;
             dirtySlots[slot] = false;
             slotPos[slot] = pos;
             slotChunk[slot] = chunk;
             heightsChanged = false;
             pixelsChanged = false;
             setSlotHasLight(slot, writeChunk(pixels, chunk, secX, secZ, blockListener));
-            if (heightsChanged) markSkyDirty(secX, secZ);
+            if (heightsChanged) {
+                markSkyDirty(secX, secZ);
+                if (newChunk && chunk != null) {
+                    skyPixels.fillRect((slot % CHUNKS_SPAN) << 4, (slot / CHUNKS_SPAN) << 4, 16, 16, UNKNOWN_SKY);
+                    resetSkySlots[resetSky++] = slot;
+                }
+            }
             if (pixelsChanged) changedSlots[changed++] = slot;
         }
 
@@ -208,6 +219,7 @@ public final class BlockLightTexture implements AutoCloseable {
             RenderSystem.assertOnRenderThread();
             uploadSlots(texture, pixels, changedSlots, changed);
         }
+        if (resetSky > 0) uploadSlots(skyDistanceTexture, skyPixels, resetSkySlots, resetSky);
 
         updateSkyDistances();
     }

@@ -1,3 +1,3 @@
 ### Fixed
 
-- Fixed cloud shadows not rendering when another mod enables stencil on the main framebuffer (e.g. Supplementaries).
+- Fixed shadow flickering on LOD chunks with Voxy/Roxy.
