@@ -1,3 +1,3 @@
 ### Fixed
 
-- Fixed lag when quickly moving across chunks.
+- Fixed cloud shadows not rendering when another mod enables stencil on the main framebuffer (e.g. Supplementaries).

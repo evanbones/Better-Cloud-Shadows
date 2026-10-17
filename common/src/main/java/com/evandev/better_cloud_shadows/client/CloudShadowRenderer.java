@@ -55,7 +55,7 @@ public final class CloudShadowRenderer {
 
     private static ShaderInstance shader;
     private static RenderTarget depthCopy;
-    private static int lastMainDepthTexture = -1;
+    private static boolean depthCopyStencil;
     private static CloudCoverageTexture coverage;
     private static BlockLightTexture blockLight;
     private static WeakReference<ClientLevel> lastLevel = new WeakReference<>(null);
@@ -152,12 +152,13 @@ public final class CloudShadowRenderer {
         float fadeEnd = Math.min(shadowDistance, coveredRadius * 0.95f);
 
         RenderTarget main = minecraft.getMainRenderTarget();
+        boolean mainStencil = hasPackedStencil(main);
         if (depthCopy == null || depthCopy.width != main.width || depthCopy.height != main.height
-                || lastMainDepthTexture != main.getDepthTextureId()) {
+                || depthCopyStencil != mainStencil) {
             if (depthCopy != null) depthCopy.destroyBuffers();
             depthCopy = new TextureTarget(main.width, main.height, true, Minecraft.ON_OSX);
-            matchDepthFormat(depthCopy, main);
-            lastMainDepthTexture = main.getDepthTextureId();
+            matchDepthFormat(depthCopy, main, mainStencil);
+            depthCopyStencil = mainStencil;
         }
 
         RenderSystem.depthMask(true);
@@ -289,16 +290,22 @@ public final class CloudShadowRenderer {
         }
     }
 
-    private static void matchDepthFormat(RenderTarget copy, RenderTarget main) {
+    private static boolean hasPackedStencil(RenderTarget main) {
+        GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, main.frameBufferId);
+        int stencilBits = GL30.glGetFramebufferAttachmentParameteri(
+                GL30.GL_READ_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE);
+        GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
+        return stencilBits > 0;
+    }
+
+    private static void matchDepthFormat(RenderTarget copy, RenderTarget main, boolean hasStencil) {
         GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, main.frameBufferId);
         int bits = GL30.glGetFramebufferAttachmentParameteri(
                 GL30.GL_READ_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE);
         int componentType = GL30.glGetFramebufferAttachmentParameteri(
                 GL30.GL_READ_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE);
-        // the blit fails if the formats don't match exactly, so check for stencil too
+        // the blit fails if the formats don't match exactly, so stencil has to match too
         // (some mods turn it on, e.g. supplementaries)
-        boolean hasStencil = GL30.glGetFramebufferAttachmentParameteri(
-                GL30.GL_READ_FRAMEBUFFER, GL30.GL_STENCIL_ATTACHMENT, GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE) != GL11.GL_NONE;
         GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
 
         int internalFormat;
